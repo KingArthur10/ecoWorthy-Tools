@@ -11,5 +11,6 @@
 - Android SDK: project-local in `.android-sdk/` (gitignored). Recreate it with `tools/setup-android-sdk.sh`. Android targets: compileSdk 37, minSdk 31.
 - Build and test: `./gradlew :core:jvmTest`. Protocol code goes in `core/src/commonMain` (it's shared by Android and the Linux hub).
 - Android app: `./gradlew :app:assembleDebug` (and `:app:lintDebug`, which should stay clean). The manifest deliberately has no INTERNET permission.
+- Hub: `./gradlew :hub:test :hub:installDist`. Its web UI is plain HTML/JS in `hub/src/main/resources/web` and must not load anything from the internet. Its API is unauthenticated and bound to localhost, so it must not gain write/control endpoints before pairing/auth exists.
 - Protocol tests use the real frames in `core/src/commonTest/.../Captures.kt` (generated from `docs/hardware/captures/`).
 - `JbdFrame.readRequest` accepts only read commands. Write commands must be a separate, deliberate API (see `docs/safety.md`).

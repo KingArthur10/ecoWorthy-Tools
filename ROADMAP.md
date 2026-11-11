@@ -18,7 +18,9 @@
 - [ ] Settings screen (polling interval)
 
 ## Phase 2: Linux hub
-- [ ] Hub daemon: polling, history, LAN API, basic web UI
+- [x] Hub service: polling (10 min, with a 2 min backoff after a failure), SQLite history, JSON API, offline web dashboard with 24 h charts, CLI (`status`, `refresh`, `import-phone`, `add-favorite`, `probe`), and a systemd user service
+- [ ] LAN access with pairing/auth (needed before the phone can use the hub, and before any control endpoints)
+- [ ] Continuous passive scanning (live signal strength, faster polls)
 - [ ] Android hub mode, pairing, and sync
 
 ## Phase 3: Control and profiles

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Battery Hub</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Batteries</h1>
+    <span id="updated" class="muted"></span>
+    <button id="refresh-all" type="button">Refresh all</button>
+  </header>
+  <main id="overview"><p class="muted">Loading…</p></main>
+
+  <dialog id="detail">
+    <form method="dialog" class="detail-head">
+      <h2 id="detail-title"></h2>
+      <button id="detail-refresh" type="button">Refresh now</button>
+      <button value="close" aria-label="Close">✕</button>
+    </form>
+    <div id="detail-body"></div>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>

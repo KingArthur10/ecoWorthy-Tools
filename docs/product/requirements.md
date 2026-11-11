@@ -93,7 +93,7 @@ Priority: **M** = must (MVP), **S** = should, **C** = could.
 | FR-082 | The hub serves a LAN API for the phone, plus a web UI with **full monitoring and control** (the Linux PC is a command station at home) | M |
 | FR-083 | Switch automatically between hub mode and direct mode | S |
 | FR-084 | Settings sync between the phone and the hub | S |
-| FR-085 | A hub CLI for status and commands (scriptable) | S |
+| FR-085 | A hub CLI for status and commands (scriptable). Status, refresh, import, and add are done | S |
 | FR-086 | The phone can reach the hub with **no internet**, through a local link (a phone hotspot or a hub access point) | S |
 
 ## Non-functional

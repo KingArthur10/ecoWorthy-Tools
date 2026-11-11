@@ -15,6 +15,17 @@ tools/setup-android-sdk.sh  # one time: project-local Android SDK in .android-sd
 ./gradlew :app:assembleDebug  # Android app → app/build/outputs/apk/debug/app-debug.apk
 ```
 
+### Linux hub
+```
+tools/install-hub.sh          # build, install to ~/.local/opt, start a systemd user service
+battery-hub import-phone      # copy favorites, nicknames, and groups from the phone (USB + adb)
+battery-hub add-favorite A5:C2:39:57:78:44 "Garage"   # or add them by hand
+battery-hub status            # all batteries, groups, and totals in the terminal
+battery-hub refresh [MAC]     # read now
+```
+Dashboard: http://127.0.0.1:8640/ (this machine only for now; LAN access comes with pairing).
+Data lives in `~/.local/share/battery-commander/` (`state.json`, the same format as the phone's, and `history.db`).
+
 ### Installing on a phone over USB
 1. On the phone: Settings → About phone → tap *Build number* 7 times, then Settings → System → Developer options → turn on **USB debugging**.
 2. Plug in the phone and accept the "Allow USB debugging?" prompt.
@@ -28,7 +39,7 @@ The SDK and `local.properties` (which points Gradle at it) are machine-specific 
 |---|---|
 | `core/` | Kotlin Multiplatform shared core. `protocol/jbd`: framing, frame reassembly, parsers, and a read-only client. `transport`: the `BleLink` interface that Android and BlueZ implement |
 | `app/` | Android app (Compose): favorites overview, search, detail, refresh. Read-only for now |
-| `hub/` | Linux hub (JVM). For now: a BlueZ `BleLink` over D-Bus, plus a spike CLI that polls batteries read-only |
+| `hub/` | Linux hub (JVM): `battery-hub` service and CLI. Polls favorites over BlueZ, keeps SQLite history, and serves an offline web dashboard |
 | `tools/` | Dev tools (for example, the Python read-only probe) |
 
 ## Documentation map

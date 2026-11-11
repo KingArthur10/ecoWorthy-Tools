@@ -14,6 +14,10 @@
 Switching between modes is automatic and visible on screen. The hub never needs the internet, only a local
 IP link: home Wi-Fi, a phone hotspot (which works with no cellular service), or the hub's own Wi-Fi access point (see ADR 0003).
 
+**Implemented (2026-11-10):** `hub/`: `battery-hub serve` (poller + Ktor on 127.0.0.1:8640), SQLite history,
+a JSON API (`/api/overview`, `/api/batteries/{mac}/history`, `POST …/refresh`), and the static dashboard. The hub shares
+`StoredState` and `summarize()` with the phone, through `core`.
+
 The Linux PC is also a **command station** in its own right: its web UI and CLI offer full monitoring and
 control (FR-082, FR-085).
 

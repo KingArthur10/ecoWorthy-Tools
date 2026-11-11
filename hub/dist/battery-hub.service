@@ -1,0 +1,14 @@
+[Unit]
+Description=Battery Commander hub (polls batteries over Bluetooth, serves the dashboard)
+After=bluetooth.target
+Wants=bluetooth.target
+
+[Service]
+ExecStart=%h/.local/opt/battery-hub/bin/battery-hub serve
+Restart=on-failure
+RestartSec=10
+# Give an in-flight battery read time to disconnect cleanly.
+TimeoutStopSec=20
+
+[Install]
+WantedBy=default.target
