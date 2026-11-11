@@ -1,5 +1,6 @@
 package app.batterycommander.hub.bluez
 
+import app.batterycommander.domain.DiscoveredDevice
 import app.batterycommander.transport.BleLink
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -142,6 +143,41 @@ class BluezBle(private val adapter: String = "hci0") : AutoCloseable {
             // Discovery running during a connect makes BlueZ LE connects unreliable.
             if (startedHere) runCatching { adapter.StopDiscovery() }
         }
+    }
+
+    /**
+     * LE discovery for [duration]; returns devices advertising [serviceUuid] that were heard during
+     * this scan (BlueZ only reports RSSI for those), strongest first.
+     */
+    suspend fun scan(serviceUuid: String, duration: Duration): List<DiscoveredDevice> = withContext(Dispatchers.IO) {
+        val adapter = bus.getRemoteObject(BLUEZ, adapterPath, Adapter1::class.java)
+        adapter.SetDiscoveryFilter(mapOf("Transport" to Variant("le"), "DuplicateData" to Variant(true)))
+        val startedHere = runCatching { adapter.StartDiscovery() }.isSuccess
+        val seen = mutableMapOf<String, DiscoveredDevice>()
+        val uuid = serviceUuid.lowercase()
+        try {
+            val deadline = TimeSource.Monotonic.markNow() + duration
+            while (!deadline.hasPassedNow()) {
+                val om = bus.getRemoteObject(BLUEZ, "/", ObjectManager::class.java)
+                for ((path, ifaces) in om.GetManagedObjects()) {
+                    if (!path.path.startsWith("$adapterPath/dev_")) continue
+                    val dev = ifaces[DEVICE_IFACE] ?: continue
+                    val rssi = (dev["RSSI"]?.value as? Number)?.toInt() ?: continue
+                    val uuids = when (val raw = dev["UUIDs"]?.value) {
+                        is List<*> -> raw.map { it.toString().lowercase() }
+                        is Array<*> -> raw.map { it.toString().lowercase() }
+                        else -> emptyList()
+                    }
+                    if (uuid !in uuids) continue
+                    val mac = dev["Address"]?.value as? String ?: continue
+                    seen[mac] = DiscoveredDevice(mac, dev["Name"]?.value as? String, rssi)
+                }
+                delay(500.milliseconds)
+            }
+        } finally {
+            if (startedHere) runCatching { adapter.StopDiscovery() }
+        }
+        seen.values.sortedByDescending { it.rssiDbm }
     }
 
     /** Map of lowercase characteristic UUID to object path, for one device. */

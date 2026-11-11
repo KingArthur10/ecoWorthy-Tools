@@ -58,6 +58,7 @@ import app.batterycommander.data.RefreshStatus
 import app.batterycommander.domain.AggregateStats
 import app.batterycommander.domain.BatteryGroup
 import app.batterycommander.domain.BatteryReading
+import app.batterycommander.domain.MAX_NAME_LENGTH
 import app.batterycommander.domain.Wiring
 import app.batterycommander.domain.capacityMah
 import app.batterycommander.domain.formatAge
@@ -366,7 +367,7 @@ fun NicknameDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
-            OutlinedTextField(text, { text = it }, label = { Text(label) }, singleLine = true)
+            OutlinedTextField(text, { if (it.length <= MAX_NAME_LENGTH) text = it }, label = { Text(label) }, singleLine = true)
         },
         confirmButton = { TextButton(onClick = { onConfirm(text) }, enabled = text.isNotBlank()) { Text("Save") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
@@ -494,7 +495,7 @@ private fun GroupDialog(
         title = { Text(title) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(name, { name = it }, label = { Text("Group name") }, singleLine = true)
+                OutlinedTextField(name, { if (it.length <= MAX_NAME_LENGTH) name = it }, label = { Text("Group name") }, singleLine = true)
                 Text("How are these batteries wired?", style = MaterialTheme.typography.labelLarge)
                 for (w in Wiring.entries) RadioRow(wiringLabel(w), selected = w == wiring) { wiring = w }
                 Text(

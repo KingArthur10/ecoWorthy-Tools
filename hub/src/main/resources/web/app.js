@@ -82,7 +82,8 @@ function batteryCard(b, now) {
        <div>${ah(r.remainingCapacityMah)} of ${ah(capacity(r))} · ${energy((r.remainingCapacityMah * nominalMv(r)) / 1000)} of ${energy((capacity(r) * nominalMv(r)) / 1000)}</div>`
     : `<div class="muted">No data yet</div>`;
   return `<article class="card battery" data-mac="${esc(b.favorite.mac)}" tabindex="0">
-    <div class="card-head"><span class="name">${esc(b.favorite.nickname)}</span>${signal(r?.rssiDbm)}</div>
+    <div class="card-head"><span class="name">${esc(b.favorite.nickname)}</span>${signal(r?.rssiDbm)}
+      <button type="button" class="more" data-mac="${esc(b.favorite.mac)}" aria-label="Actions for ${esc(b.favorite.nickname)}">⋮</button></div>
     ${body}${statusLine(b, now)}</article>`;
 }
 
@@ -92,13 +93,14 @@ function render() {
   const macs = Object.keys(o.batteries);
   let html = "";
   if (!macs.length) {
-    html = `<p class="muted">No favorites yet. Add them in the Android app, then run <code>battery-hub import-phone</code>.</p>`;
+    html = `<p class="muted">No favorites yet. Click <strong>Search</strong> to find batteries nearby, or run <code>battery-hub import-phone</code> to copy them from the phone.</p>`;
   }
   if (macs.length >= 2 && o.total) {
     html += `<section class="card total"><div class="card-head"><span class="name">All batteries</span></div>${aggregateBody(o.total, now)}</section>`;
   }
   for (const g of o.groups) {
-    html += `<section class="card group"><div class="card-head"><span class="name">${esc(g.group.name)}</span><span class="small">${wiringLabel(g.group.wiring)}</span></div>
+    html += `<section class="card group"><div class="card-head"><span class="name">${esc(g.group.name)}</span><span class="small">${wiringLabel(g.group.wiring)}</span>
+      <button type="button" class="more" data-group="${esc(g.group.id)}" aria-label="Actions for group ${esc(g.group.name)}">⋮</button></div>
       ${g.members.length === 0 ? `<div class="small muted">No batteries yet</div>` : g.stats ? aggregateBody(g.stats, now) : `<div class="small muted">No data yet</div>`}</section>`;
     html += `<div class="grid">${g.members.map((m) => batteryCard(o.batteries[m], now)).join("")}</div>`;
   }
@@ -183,6 +185,223 @@ async function renderDetail() {
   }
 }
 
+// --- API (every change carries the header the hub requires) -----------------------------------
+
+async function api(method, url, body) {
+  const res = await fetch(url, {
+    method,
+    headers: { "Content-Type": "application/json", "X-Battery-Hub": "1" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!res.ok) {
+    let msg = res.status + "";
+    try { msg = (await res.json()).error ?? msg; } catch (_) {}
+    throw new Error(msg);
+  }
+  return res.status === 204 ? null : res.json();
+}
+
+let toastTimer;
+function toast(msg) {
+  const t = $("#toast");
+  t.textContent = msg;
+  t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => (t.hidden = true), 4000);
+}
+
+/** Runs an action, shows errors, and refreshes the overview. */
+async function act(fn) {
+  try { await fn(); } catch (e) { toast(e.message); }
+  poll();
+}
+
+// --- Modal dialogs -----------------------------------------------------------------------------
+
+/** Shows the modal; resolves with { value, data } where value is the clicked button's value (or null). */
+function modal(title, bodyHtml, buttons) {
+  const dlg = $("#modal");
+  $("#modal-title").textContent = title;
+  $("#modal-body").innerHTML = bodyHtml;
+  $("#modal-buttons").innerHTML = buttons
+    .map((b) => `<button value="${esc(b.value)}" class="${b.cls ?? ""}" ${b.value === "cancel" ? 'formnovalidate' : ""}>${esc(b.label)}</button>`)
+    .join("");
+  return new Promise((resolve) => {
+    dlg.addEventListener("close", () => {
+      const v = dlg.returnValue;
+      resolve({ value: v && v !== "cancel" ? v : null, data: new FormData($("#modal-form")) });
+    }, { once: true });
+    dlg.returnValue = "";
+    dlg.showModal();
+    dlg.querySelector("input[type=text]")?.focus();
+  });
+}
+
+async function askName(title, initial, label = "Name") {
+  const { value, data } = await modal(title,
+    `<label>${esc(label)}<input type="text" name="name" maxlength="40" required value="${esc(initial)}"></label>`,
+    [{ label: "Cancel", value: "cancel" }, { label: "Save", value: "ok", cls: "primary" }]);
+  const name = (data.get("name") ?? "").trim();
+  return value && name ? name : null;
+}
+
+const WIRINGS = ["PARALLEL", "SERIES", "NONE"];
+
+async function askGroup(title, name, wiring) {
+  const radios = WIRINGS.map((w) =>
+    `<label class="choice"><input type="radio" name="wiring" value="${w}" ${w === wiring ? "checked" : ""}> ${wiringLabel(w)}</label>`).join("");
+  const { value, data } = await modal(title,
+    `<label>Group name<input type="text" name="name" maxlength="40" required value="${esc(name)}"></label>
+     <div><div class="small muted">How are these batteries wired?</div>${radios}</div>
+     <p class="small muted">Parallel adds amp-hours. Series adds voltage, and the weakest battery sets the amp-hours. Energy (kWh) adds up either way.</p>`,
+    [{ label: "Cancel", value: "cancel" }, { label: "Save", value: "ok", cls: "primary" }]);
+  const n = (data.get("name") ?? "").trim();
+  return value && n ? { name: n, wiring: data.get("wiring") ?? "PARALLEL" } : null;
+}
+
+async function chooseAction(title, actions) {
+  const { value } = await modal(title,
+    `<div class="actions">${actions.map((a) => `<button value="${a.value}" class="${a.cls ?? ""}">${esc(a.label)}</button>`).join("")}</div>`,
+    [{ label: "Cancel", value: "cancel" }]);
+  return value;
+}
+
+async function confirmAction(title, message, label) {
+  const { value } = await modal(title, `<p>${esc(message)}</p>`,
+    [{ label: "Cancel", value: "cancel" }, { label, value: "ok", cls: "danger" }]);
+  return value === "ok";
+}
+
+// --- Battery and group actions ----------------------------------------------------------------
+
+async function batteryActions(mac) {
+  const b = overview.batteries[mac];
+  if (!b) return;
+  const name = b.favorite.nickname;
+  const choice = await chooseAction(name, [
+    { label: "Refresh now", value: "refresh" },
+    { label: "Rename…", value: "rename" },
+    { label: "Group…", value: "group" },
+    { label: "Move up", value: "up" },
+    { label: "Move down", value: "down" },
+    { label: "Remove from favorites…", value: "remove", cls: "danger" },
+  ]);
+  const enc = encodeURIComponent(mac);
+  switch (choice) {
+    case "refresh": return act(() => api("POST", `/api/batteries/${enc}/refresh`));
+    case "rename": {
+      const n = await askName("Rename", name, "Nickname");
+      if (n) return act(() => api("PUT", `/api/favorites/${enc}/nickname`, { nickname: n }));
+      return;
+    }
+    case "group": return pickGroup(b);
+    case "up": return act(() => api("POST", `/api/favorites/${enc}/move`, { delta: -1 }));
+    case "down": return act(() => api("POST", `/api/favorites/${enc}/move`, { delta: 1 }));
+    case "remove":
+      if (await confirmAction("Remove favorite", `Stop tracking "${name}"? Its history stays on disk.`, "Remove")) {
+        return act(() => api("DELETE", `/api/favorites/${enc}`));
+      }
+  }
+}
+
+async function pickGroup(b) {
+  const current = b.favorite.groupId ?? "";
+  const options = overview.groups.map((g) => ({ id: g.group.id, label: `${g.group.name} (${wiringLabel(g.group.wiring).toLowerCase()})` }));
+  options.push({ id: "", label: "No group" });
+  const radios = options.map((o) =>
+    `<label class="choice"><input type="radio" name="group" value="${esc(o.id)}" ${o.id === current ? "checked" : ""}> ${esc(o.label)}</label>`).join("");
+  const { value, data } = await modal(`Group for ${b.favorite.nickname}`, radios,
+    [{ label: "Cancel", value: "cancel" }, { label: "New group…", value: "new" }, { label: "Save", value: "ok", cls: "primary" }]);
+  const enc = encodeURIComponent(b.favorite.mac);
+  if (value === "new") {
+    const g = await askGroup("New group", "", "PARALLEL");
+    if (!g) return;
+    return act(async () => {
+      const { id } = await api("POST", "/api/groups", g);
+      await api("PUT", `/api/favorites/${enc}/group`, { groupId: id });
+    });
+  }
+  if (value === "ok") {
+    const id = data.get("group") || null;
+    return act(() => api("PUT", `/api/favorites/${enc}/group`, { groupId: id }));
+  }
+}
+
+async function groupActions(id) {
+  const g = overview.groups.find((x) => x.group.id === id)?.group;
+  if (!g) return;
+  const choice = await chooseAction(g.name, [
+    { label: "Rename or change wiring…", value: "edit" },
+    { label: "Delete group…", value: "delete", cls: "danger" },
+  ]);
+  if (choice === "edit") {
+    const r = await askGroup("Edit group", g.name, g.wiring);
+    if (r) return act(() => api("PATCH", `/api/groups/${encodeURIComponent(id)}`, r));
+  } else if (choice === "delete") {
+    if (await confirmAction("Delete group", `Delete "${g.name}"? Its batteries stay as favorites, ungrouped.`, "Delete")) {
+      return act(() => api("DELETE", `/api/groups/${encodeURIComponent(id)}`));
+    }
+  }
+}
+
+// --- Search -----------------------------------------------------------------------------------
+
+let scanTimer = null;
+
+function renderScan(s) {
+  const el = $("#discovered");
+  if (!s.scanning && !s.devices.length && !s.error && !s.finishedAtMs) { el.hidden = true; return; }
+  el.hidden = false;
+  const head = `<h3 class="section-title">Discovered ${s.scanning ? '<span class="spinner" aria-label="Searching"></span>' : ""}</h3>`;
+  let body;
+  if (s.error) body = `<p class="error small">Search failed: ${esc(s.error)}</p>`;
+  else if (!s.devices.length) body = `<p class="muted small">${s.scanning ? "Searching…" : "No new batteries found. Batteries already in your favorites aren't listed."}</p>`;
+  else body = s.devices.map((d) => `<div class="device">
+      <div class="who"><div>${esc(d.name ?? "Unknown")}</div><div class="small muted">${esc(d.mac)}</div></div>
+      ${signal(d.rssiDbm)}
+      <button type="button" data-identify="${esc(d.mac)}">Identify</button>
+      <button type="button" class="primary" data-add="${esc(d.mac)}">Add</button></div>`).join("");
+  el.innerHTML = head + body;
+  $("#search").disabled = s.scanning;
+}
+
+async function pollScan() {
+  try {
+    const s = await (await fetch("/api/scan")).json();
+    renderScan(s);
+    if (!s.scanning) { clearInterval(scanTimer); scanTimer = null; }
+  } catch (_) {}
+}
+
+async function startScan() {
+  try {
+    renderScan(await api("POST", "/api/scan", { seconds: 15 }));
+  } catch (e) {
+    toast(e.message);
+  }
+  if (!scanTimer) scanTimer = setInterval(pollScan, 1000);
+}
+
+async function identify(mac) {
+  const pending = modal(mac, `<p><span class="spinner"></span> Reading… (stops polling briefly)</p>`, [{ label: "Close", value: "cancel" }]);
+  let text;
+  try {
+    const r = await api("POST", `/api/identify/${encodeURIComponent(mac)}`);
+    text = `<p class="big">${r.stateOfChargePct}%</p><p>${volts(r.packVoltageMv)} · ${amps(r.currentMa)} · ${ah(r.nominalCapacityMah)} · made ${esc(r.productionDate)}</p>
+      <p class="small muted">Match this to the battery's display or charge level to know which one it is.</p>`;
+  } catch (e) {
+    text = `<p class="error">Couldn't read it: ${esc(e.message)}</p>`;
+  }
+  if ($("#modal").open && $("#modal-title").textContent === mac) $("#modal-body").innerHTML = text;
+  await pending;
+}
+
+async function addFavorite(mac) {
+  const n = await askName("Add to favorites", "", "Nickname");
+  if (n) await act(() => api("POST", "/api/favorites", { mac, nickname: n }));
+  pollScan();
+}
+
 // --- Wiring up --------------------------------------------------------------------------------
 
 async function poll() {
@@ -197,6 +416,12 @@ async function poll() {
 }
 
 $("#overview").addEventListener("click", (e) => {
+  const more = e.target.closest(".more");
+  if (more) {
+    if (more.dataset.mac) batteryActions(more.dataset.mac);
+    else if (more.dataset.group) groupActions(more.dataset.group);
+    return;
+  }
   const card = e.target.closest(".card.battery");
   if (!card) return;
   openMac = card.dataset.mac;
@@ -207,17 +432,21 @@ $("#overview").addEventListener("click", (e) => {
 $("#overview").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && e.target.matches(".card.battery")) e.target.click();
 });
+$("#discovered").addEventListener("click", (e) => {
+  const add = e.target.closest("[data-add]");
+  const ident = e.target.closest("[data-identify]");
+  if (add) addFavorite(add.dataset.add);
+  if (ident) identify(ident.dataset.identify);
+});
 $("#detail").addEventListener("close", () => { openMac = null; });
-$("#detail-refresh").addEventListener("click", async () => {
+$("#detail-refresh").addEventListener("click", () => {
   if (!openMac) return;
-  await fetch(`/api/batteries/${encodeURIComponent(openMac)}/refresh`, { method: "POST" });
   historyCache.mac = null;
-  poll();
+  act(() => api("POST", `/api/batteries/${encodeURIComponent(openMac)}/refresh`));
 });
-$("#refresh-all").addEventListener("click", async () => {
-  await fetch("/api/refresh", { method: "POST" });
-  poll();
-});
+$("#refresh-all").addEventListener("click", () => act(() => api("POST", "/api/refresh")));
+$("#search").addEventListener("click", startScan);
 
 poll();
+pollScan();
 setInterval(poll, 5000);

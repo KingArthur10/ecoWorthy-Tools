@@ -90,7 +90,7 @@ Priority: **M** = must (MVP), **S** = should, **C** = could.
 |---|---|---|
 | FR-080 | An Android app (works in hub mode and direct mode) | M |
 | FR-081 | A Linux hub daemon that polls, enforces profiles, and keeps history | M |
-| FR-082 | The hub serves a LAN API for the phone, plus a web UI with **full monitoring and control** (the Linux PC is a command station at home) | M |
+| FR-082 | The hub serves a LAN API for the phone, plus a web UI with **full monitoring and control** (the Linux PC is a command station at home). Monitoring, search, favorites, and groups are done (standalone, no phone needed); control is still to do | M |
 | FR-083 | Switch automatically between hub mode and direct mode | S |
 | FR-084 | Settings sync between the phone and the hub | S |
 | FR-085 | A hub CLI for status and commands (scriptable). Status, refresh, import, and add are done | S |

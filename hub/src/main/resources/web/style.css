@@ -104,6 +104,39 @@ dialog::backdrop { background: rgb(0 0 0 / 0.45); }
 .chart .axis { stroke: var(--border); stroke-width: 1; }
 .chart text { fill: var(--muted); font-size: 11px; }
 
+.card-head .more {
+  padding: 0 8px; border: none; background: transparent; font-size: 1.2rem; line-height: 1; color: var(--muted);
+}
+.card-head .more:hover { color: var(--text); }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+button.danger { color: var(--error); }
+
+#discovered .device {
+  display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border);
+}
+#discovered .device .who { flex: 1; min-width: 0; }
+.spinner {
+  display: inline-block; width: 14px; height: 14px; border: 2px solid var(--track);
+  border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+#modal-form { padding: 16px 20px; display: grid; gap: 12px; }
+#modal-form h2 { margin: 0; font-size: 1.15rem; }
+#modal-form input[type=text] {
+  font: inherit; width: 100%; padding: 8px 10px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text);
+}
+#modal-form label.choice { display: flex; gap: 8px; align-items: center; padding: 4px 0; cursor: pointer; }
+.buttons { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.actions { display: grid; gap: 6px; }
+.actions button { text-align: left; border-radius: 10px; }
+
+#toast {
+  position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
+  background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 10px; max-width: calc(100vw - 32px);
+}
+
 @media (max-width: 480px) {
   main { padding: 12px; }
   .grid { grid-template-columns: 1fr; }

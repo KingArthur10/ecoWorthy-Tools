@@ -19,6 +19,7 @@
 
 ## Phase 2: Linux hub
 - [x] Hub service: polling (10 min, with a 2 min backoff after a failure), SQLite history, JSON API, offline web dashboard with 24 h charts, CLI (`status`, `refresh`, `import-phone`, `add-favorite`, `probe`), and a systemd user service
+- [x] Standalone hub dashboard: search, identify, favorites (add/rename/reorder/remove), groups (create/edit/delete/assign). The API is guarded against CSRF and DNS rebinding
 - [ ] LAN access with pairing/auth (needed before the phone can use the hub, and before any control endpoints)
 - [ ] Continuous passive scanning (live signal strength, faster polls)
 - [ ] Android hub mode, pairing, and sync

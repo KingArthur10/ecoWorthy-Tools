@@ -10,9 +10,22 @@
   <header>
     <h1>Batteries</h1>
     <span id="updated" class="muted"></span>
+    <button id="search" type="button">Search</button>
     <button id="refresh-all" type="button">Refresh all</button>
   </header>
-  <main id="overview"><p class="muted">Loading…</p></main>
+  <main>
+    <div id="overview"><p class="muted">Loading…</p></div>
+    <section id="discovered" hidden></section>
+  </main>
+
+  <dialog id="modal">
+    <form method="dialog" id="modal-form">
+      <h2 id="modal-title"></h2>
+      <div id="modal-body"></div>
+      <div id="modal-buttons" class="buttons"></div>
+    </form>
+  </dialog>
+  <div id="toast" role="status" aria-live="polite" hidden></div>
 
   <dialog id="detail">
     <form method="dialog" class="detail-head">

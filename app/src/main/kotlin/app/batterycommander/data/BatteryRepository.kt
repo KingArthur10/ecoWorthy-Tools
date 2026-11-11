@@ -9,7 +9,15 @@ import app.batterycommander.domain.BatteryReading
 import app.batterycommander.domain.Favorite
 import app.batterycommander.domain.StoredState
 import app.batterycommander.domain.Wiring
+import app.batterycommander.domain.addFavorite
+import app.batterycommander.domain.assignGroup
+import app.batterycommander.domain.createGroup
+import app.batterycommander.domain.deleteGroup
+import app.batterycommander.domain.moveFavorite
+import app.batterycommander.domain.removeFavorite
+import app.batterycommander.domain.renameFavorite
 import app.batterycommander.domain.summarize
+import app.batterycommander.domain.updateGroup
 import app.batterycommander.domain.toReading
 import app.batterycommander.protocol.jbd.JbdClient
 import app.batterycommander.protocol.jbd.JbdGatt
@@ -100,59 +108,36 @@ class BatteryRepository(
     // --- Favorites -------------------------------------------------------------------------
 
     fun addFavorite(hit: ScanHit, nickname: String) {
-        mutate { s ->
-            if (s.favorites.any { it.mac == hit.mac }) s
-            else s.copy(favorites = s.favorites + Favorite(mac = hit.mac, nickname = nickname.trim(), bleName = hit.name))
-        }
+        mutate { it.addFavorite(hit.mac, nickname, hit.name) }
         // Read it right away rather than leaving "No data yet" until the next poll.
         scope.launch { refresh(hit.mac) }
     }
 
-    fun rename(mac: String, nickname: String) = mutate { s ->
-        s.copy(favorites = s.favorites.map { if (it.mac == mac) it.copy(nickname = nickname.trim()) else it })
-    }
+    fun rename(mac: String, nickname: String) = mutate { it.renameFavorite(mac, nickname) }
 
-    fun remove(mac: String) = mutate { s ->
-        s.copy(favorites = s.favorites.filterNot { it.mac == mac }, readings = s.readings - mac)
-    }
+    fun remove(mac: String) = mutate { it.removeFavorite(mac) }
 
     /** Moves a favorite up (-1) or down (+1) in the display order. */
-    fun move(mac: String, delta: Int) = mutate { s ->
-        val list = s.favorites.toMutableList()
-        val from = list.indexOfFirst { it.mac == mac }
-        val to = (from + delta).coerceIn(0, list.lastIndex)
-        if (from < 0 || from == to) s else s.copy(favorites = list.apply { add(to, removeAt(from)) })
-    }
+    fun move(mac: String, delta: Int) = mutate { it.moveFavorite(mac, delta) }
 
     // --- Groups ----------------------------------------------------------------------------
 
     /** Creates a group and returns its id. */
     fun createGroup(name: String, wiring: Wiring): String {
         val id = UUID.randomUUID().toString()
-        mutate { it.copy(groups = it.groups + BatteryGroup(id, name.trim(), wiring)) }
+        mutate { it.createGroup(id, name, wiring) }
         return id
     }
 
-    fun renameGroup(id: String, name: String) = mutate { s ->
-        s.copy(groups = s.groups.map { if (it.id == id) it.copy(name = name.trim()) else it })
-    }
+    fun renameGroup(id: String, name: String) = mutate { it.updateGroup(id, name = name) }
 
-    fun setWiring(id: String, wiring: Wiring) = mutate { s ->
-        s.copy(groups = s.groups.map { if (it.id == id) it.copy(wiring = wiring) else it })
-    }
+    fun setWiring(id: String, wiring: Wiring) = mutate { it.updateGroup(id, wiring = wiring) }
 
     /** Deletes the group; its batteries become ungrouped (they stay favorites). */
-    fun deleteGroup(id: String) = mutate { s ->
-        s.copy(
-            groups = s.groups.filterNot { it.id == id },
-            favorites = s.favorites.map { if (it.groupId == id) it.copy(groupId = null) else it },
-        )
-    }
+    fun deleteGroup(id: String) = mutate { it.deleteGroup(id) }
 
     /** Puts a battery in a group, or takes it out with null. A battery is in at most one group. */
-    fun assignGroup(mac: String, groupId: String?) = mutate { s ->
-        s.copy(favorites = s.favorites.map { if (it.mac == mac) it.copy(groupId = groupId) else it })
-    }
+    fun assignGroup(mac: String, groupId: String?) = mutate { it.assignGroup(mac, groupId) }
 
     // --- Search ----------------------------------------------------------------------------
 

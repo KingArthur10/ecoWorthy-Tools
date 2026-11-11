@@ -11,6 +11,7 @@
 - Android SDK: project-local in `.android-sdk/` (gitignored). Recreate it with `tools/setup-android-sdk.sh`. Android targets: compileSdk 37, minSdk 31.
 - Build and test: `./gradlew :core:jvmTest`. Protocol code goes in `core/src/commonMain` (it's shared by Android and the Linux hub).
 - Android app: `./gradlew :app:assembleDebug` (and `:app:lintDebug`, which should stay clean). The manifest deliberately has no INTERNET permission.
-- Hub: `./gradlew :hub:test :hub:installDist`. Its web UI is plain HTML/JS in `hub/src/main/resources/web` and must not load anything from the internet. Its API is unauthenticated and bound to localhost, so it must not gain write/control endpoints before pairing/auth exists.
+- Hub: `./gradlew :hub:test :hub:installDist`. Its web UI is plain HTML/JS in `hub/src/main/resources/web` and must not load anything from the internet. Its API is unauthenticated and bound to localhost. Every request must carry an allowed Host header (stops DNS rebinding), and every non-GET request needs `X-Battery-Hub: 1` (stops CSRF). Configuration edits (favorites, groups) are allowed; endpoints that change battery state are not, until pairing/auth exists.
+- Favorite and group edit rules live in `core/.../domain/FleetEdits.kt` and are shared by the phone and the hub. Don't reimplement them per platform.
 - Protocol tests use the real frames in `core/src/commonTest/.../Captures.kt` (generated from `docs/hardware/captures/`).
 - `JbdFrame.readRequest` accepts only read commands. Write commands must be a separate, deliberate API (see `docs/safety.md`).

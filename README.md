@@ -18,12 +18,15 @@ tools/setup-android-sdk.sh  # one time: project-local Android SDK in .android-sd
 ### Linux hub
 ```
 tools/install-hub.sh          # build, install to ~/.local/opt, start a systemd user service
-battery-hub import-phone      # copy favorites, nicknames, and groups from the phone (USB + adb)
-battery-hub add-favorite A5:C2:39:57:78:44 "Garage"   # or add them by hand
+battery-hub scan              # find batteries that aren't favorites yet
+battery-hub add-favorite A5:C2:39:57:78:44 "Garage"   # add or rename one
+battery-hub import-phone      # or copy favorites, nicknames, and groups from the phone (USB + adb)
 battery-hub status            # all batteries, groups, and totals in the terminal
 battery-hub refresh [MAC]     # read now
 ```
-Dashboard: http://127.0.0.1:8640/ (this machine only for now; LAN access comes with pairing).
+Dashboard: http://127.0.0.1:8640/ (this machine only for now; LAN access comes with pairing). It's fully standalone:
+Search (with Identify), add, rename, reorder, and remove favorites; create, edit, and delete groups and assign batteries to them;
+totals; and per-battery detail with 24 h charts.
 Data lives in `~/.local/share/battery-commander/` (`state.json`, the same format as the phone's, and `history.db`).
 
 ### Installing on a phone over USB

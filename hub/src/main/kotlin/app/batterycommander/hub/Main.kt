@@ -6,6 +6,7 @@ import app.batterycommander.hub.bluez.BluezBle
 import app.batterycommander.hub.store.HistoryDb
 import app.batterycommander.hub.store.HubPaths
 import app.batterycommander.hub.store.StateStore
+import app.batterycommander.hub.web.LOOPBACK_HOSTS
 import app.batterycommander.hub.web.OverviewDto
 import app.batterycommander.hub.web.hubModule
 import app.batterycommander.hub.web.overview
@@ -53,10 +54,11 @@ class Serve : CliktCommand() {
         val store = StateStore()
         val history = HistoryDb()
         val ble = BluezBle(adapter)
-        val service = HubService(store, history, BluezReader(ble), pollInterval = interval.minutes)
+        val service = HubService(store, history, BluezReader(ble), BluezScanner(ble), pollInterval = interval.minutes)
         val jobs = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val poller = jobs.launch { service.runPoller() }
-        val server = embeddedServer(CIO, port = port, host = host) { hubModule(service, history, jobs) }
+        val allowedHosts = LOOPBACK_HOSTS + host
+        val server = embeddedServer(CIO, port = port, host = host) { hubModule(service, history, jobs, allowedHosts) }
 
         // On stop (Ctrl-C, systemctl stop), let any in-flight read finish its clean disconnect.
         Runtime.getRuntime().addShutdownHook(
@@ -133,6 +135,28 @@ class Refresh : CliktCommand() {
     override fun run() {
         post(if (mac == null) "$url/api/refresh" else "$url/api/batteries/$mac/refresh")
         echo("Refresh requested. Check `battery-hub status` in a few seconds.")
+    }
+}
+
+class Scan : CliktCommand() {
+    private val seconds by option(help = "How long to search").int().default(15)
+    private val url by option(help = "Hub URL").default("http://127.0.0.1:$DEFAULT_PORT")
+
+    override fun help(context: com.github.ajalt.clikt.core.Context) =
+        "Search for batteries that aren't favorites yet (through the running hub). Add one with add-favorite."
+
+    override fun run() {
+        post("$url/api/scan", """{"seconds":$seconds}""")
+        echo("Searching for $seconds s…")
+        val json = Json { ignoreUnknownKeys = true }
+        var state: ScanState
+        do {
+            Thread.sleep(1000)
+            state = json.decodeFromString<ScanState>(get("$url/api/scan"))
+        } while (state.scanning)
+        state.error?.let { throw CliktError("Search failed: $it") }
+        if (state.devices.isEmpty()) echo("No new batteries found (favorites aren't listed).")
+        for (d in state.devices) echo(String.format(Locale.US, "  %s  %-18s %4s dBm", d.mac, d.name ?: "?", d.rssiDbm ?: "?"))
     }
 }
 
@@ -215,13 +239,18 @@ private fun get(url: String): String {
     return res.body()
 }
 
-private fun post(url: String) {
+private fun post(url: String, body: String = "{}") {
+    val req = HttpRequest.newBuilder(URI(url))
+        .header("Content-Type", "application/json")
+        .header("X-Battery-Hub", "1")
+        .POST(HttpRequest.BodyPublishers.ofString(body))
+        .build()
     val res = try {
-        http.send(HttpRequest.newBuilder(URI(url)).POST(HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofString())
+        http.send(req, HttpResponse.BodyHandlers.ofString())
     } catch (e: Exception) {
         throw CliktError("Hub not reachable at $url (is `battery-hub serve` running?)")
     }
     if (res.statusCode() !in 200..299) throw CliktError("POST $url → ${res.statusCode()}: ${res.body()}")
 }
 
-fun main(args: Array<String>) = Hub().subcommands(Serve(), Status(), Refresh(), ImportPhone(), AddFavorite(), Probe()).main(args)
+fun main(args: Array<String>) = Hub().subcommands(Serve(), Status(), Refresh(), Scan(), ImportPhone(), AddFavorite(), Probe()).main(args)
