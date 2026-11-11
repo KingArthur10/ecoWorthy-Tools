@@ -7,6 +7,29 @@
 Keep batteries around 60% day to day to extend their life, top them up to 100% before a trip,
 and never drain below a reserve (for example, 10%).
 
+## Implemented (2026-11-11): charge limit, enforced by the hub
+- **Opt-in per battery:** `battery-hub charge-limit <battery> on|off`. The limit is the battery's own *charge to*
+  threshold (the one the time estimates use; `battery-hub thresholds <battery> --charge-to N` or the dashboard).
+  Batteries without it stay estimate-only. The on/off switch is CLI-only for now: the web API has no
+  authentication, so it gets no battery-control endpoints until pairing exists (CLAUDE.md rules). Changing the level
+  of a limited battery from the dashboard does take effect.
+- **Rule** (`core/.../domain/ChargeLimit.kt`, checked after every hub reading): charge switch **off** at SOC ≥ limit;
+  back **on** at limit − 5%. Raising the limit above the current SOC, or turning the limit off, resumes charging on
+  the next pass (within ~30 s). Only the charge switch is touched; loads keep power.
+- **Never fights the BMS:** nothing is switched while a real protection is active, and a charge switch is only turned
+  back on if the BMS's software-lock flag shows it was switched off over Bluetooth.
+- **Polling:** a limited battery charging within 5% of its limit is read every minute (overshoot ≈ 0.3% at 20 A into
+  100 Ah). A failed connection backs off 2 minutes, so a weak link can overshoot more (tested: 3–4%).
+  In *Manual only* refresh mode, limits are only checked when you refresh.
+- **Logged** in the command log with source `profile` (`battery-hub log`).
+- **The dashboard** shows "Held at 70% limit" instead of a fault, and the detail view explains the limit.
+- **Not built yet:** profiles (Storage/Trip/Outage), the min-SOC reserve, enforcement by the phone, and series strings
+  (members of a series group are refused).
+- **Live test (2026-11-11, Test 3, 20 A charger, 5 min interval):** limit 70% turned on at 71%. The first switch-off
+  (73%) lost its connection; the retry stopped it at 74%. Raising the limit to 77% resumed charging (after one more
+  failed connect), then 1-minute polls stopped it at 77.0%. Back to 70%: held, no further switching.
+- **If the hub stops while holding a battery, it stays held** (the software lock persists in the BMS); see ADR 0002.
+
 ## Profiles
 A profile is a named set of {max SOC, resume SOC, min SOC (reserve), reserve action}.
 

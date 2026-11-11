@@ -32,8 +32,11 @@ when decisions change. Start with `README.md` (doc map, build and install), `ROA
 - **Battery writes** (2026-11-11): the charge MOSFET toggle (0xE1) was tested on Test 3 with the user's OK: off, then
   back on, both confirmed by read-back and current (details in `docs/hardware/protocols/jbd.md`). Writes go through
   `JbdClient.setFets` (core) → `HubService.setCharge` (refuses series groups, logs to the `commands` table) →
-  `battery-hub charge <name|MAC> on|off` (only with the service stopped; no HTTP control endpoint). Nothing writes
-  automatically yet. Discharge off has never been tried.
+  `battery-hub charge <name|MAC> on|off` (only with the service stopped; no HTTP control endpoint). Discharge off has
+  never been tried.
+- **Charge limit** (2026-11-11, `ChargeLimit.kt`, `charge-limits-and-profiles.md`): opt-in per battery with
+  `battery-hub charge-limit <battery> on|off` (CLI only, by the rules above); the hub turns charge off at the battery's
+  charge-to threshold and on 5% below, polling every minute near it. Tested live on Test 3 (the only battery with it on).
 - **Smaller gaps:** no Android background monitoring (it only polls while visible; needs a foreground service); no taper correction for estimates near full; no nested banks (2S2P);
   the hub has no continuous passive scanning.
 

@@ -27,7 +27,8 @@
 ## Phase 3: Control and profiles
 - [x] Charge MOSFET write verified on one battery (2026-11-11): `JbdClient.setFets` with read-back, `battery-hub charge` (hub stopped), command log (`battery-hub log`)
 - [ ] Charge and discharge MOSFET control in the UIs, including the series-bank rule (series groups are refused for now)
-- [ ] Charge profiles enforced by the app, with adaptive polling
+- [x] Charge limit enforced by the hub, opt-in per battery, with adaptive polling (2026-11-11; tested on Test 3)
+- [ ] Charge profiles (Storage/Trip/Outage) and enforcement by the phone
 - [ ] Reserve notifications, and opt-in discharge cut
 
 ## Phase 4: Banks, alarms, and history

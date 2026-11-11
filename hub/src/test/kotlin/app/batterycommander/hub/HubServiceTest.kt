@@ -304,10 +304,16 @@ class HubServiceTest {
             protections = if (fet) emptyList() else listOf("MOSFET_SOFTWARE_LOCK"),
         )
         val switches = mutableListOf<Boolean>()
+        var failSwitch = false
         StateStore(stateFile).save(StoredState(favorites = listOf(Favorite("A", "Test 3"))))
         val svc = HubService(
             StateStore(stateFile), history, { bms() },
-            controller = { _, on -> switches += on; fet = on; bms() },
+            controller = { _, on ->
+                switches += on
+                if (failSwitch) error("le-connection-abort-by-local")
+                fet = on
+                bms()
+            },
             clock = { now },
         )
         svc.setFavoriteThresholds("A", app.batterycommander.domain.socThresholds(null, 70))
@@ -326,10 +332,15 @@ class HubServiceTest {
         repeat(3) { now += 10 * 60_000; advanceTimeBy(10.minutes) }
         assertEquals(listOf(false), switches)
 
-        // Raising the limit resumes charging on the next pass, without waiting for 65%.
+        // Raising the limit resumes charging on the next pass, without waiting for 65%, even if the first try fails.
+        failSwitch = true
         svc.setFavoriteThresholds("A", app.batterycommander.domain.socThresholds(null, 75))
         advanceTimeBy(30.seconds)
-        assertEquals(listOf(false, true), switches)
+        assertEquals(listOf(false, true), switches) // tried, connection failed
+        failSwitch = false
+        now += 3 * 60_000; advanceTimeBy(3.minutes) // after the failure backoff
+        assertEquals(listOf(false, true, true), switches)
+        switches.removeAt(1)
 
         // Turning the limit off while the hub holds it releases the battery.
         soc = 75; now += 60_000; advanceTimeBy(60.seconds)

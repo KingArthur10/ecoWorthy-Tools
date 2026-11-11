@@ -62,7 +62,8 @@ data class Rate(val currentMa: Int, val spanMs: Long, val confident: Boolean)
 /**
  * The battery's average current over the last [ESTIMATE_WINDOW_MS], from the change in remaining capacity between
  * the oldest sample in the window and [latest]. Falls back to the latest current (as rough) when there's no usable
- * earlier sample, or when the flow just changed direction (e.g. the sun came up), since the window would mix both.
+ * earlier sample, or when the flow just changed direction (e.g. the sun came up), since the window would mix both,
+ * or stopped because its MOSFET was switched off.
  */
 fun rollingRate(latest: BatteryReading, samples: List<RateSample>): Rate {
     val now = latest.timestampMs
@@ -75,6 +76,8 @@ fun rollingRate(latest: BatteryReading, samples: List<RateSample>): Rate {
     val avg = ((latest.remainingCapacityMah - base.remainingMah).toLong() * 3_600_000 / span).toInt()
     val latestFlow = flowOf(latest.currentMa)
     if (latestFlow != PowerFlow.IDLE && latestFlow != flowOf(avg)) return instant
+    // Idle because that direction's switch is now off (e.g. held at a charge limit): the window's flow has stopped.
+    if (latestFlow == PowerFlow.IDLE && ((avg > 0 && !latest.chargeFetOn) || (avg < 0 && !latest.dischargeFetOn))) return instant
     val steady = abs(latest.currentMa - avg) <= max(STEADY_TOLERANCE_MA, abs(avg))
     return Rate(avg, span, confident = span >= CONFIDENT_SPAN_MS && steady)
 }

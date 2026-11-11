@@ -242,8 +242,9 @@ class HubService(
         val s = _state.value
         val fav = s.favorites.firstOrNull { it.mac == mac } ?: return
         if (s.groups.firstOrNull { it.id == fav.groupId }?.wiring == Wiring.SERIES) return
-        val action = chargeLimitAction(r, fav.enforcedLimitPct, rearmed = rearmed.remove(mac)) ?: return
-        setCharge(mac, on = action == ChargeAction.TURN_ON, source = "profile")
+        val action = chargeLimitAction(r, fav.enforcedLimitPct, rearmed = mac in rearmed)
+        // A failed switch keeps the battery rearmed, so the retry still resumes right away.
+        if (action == null || setCharge(mac, on = action == ChargeAction.TURN_ON, source = "profile").isSuccess) rearmed -= mac
     }
 
     /**

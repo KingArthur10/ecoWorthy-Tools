@@ -74,6 +74,14 @@ class EstimatesTest {
     }
 
     @Test
+    fun aSwitchedOffChargeStopsTheChargingEstimate() {
+        val held = reading(30 * min, 74_300, 0).copy(chargeFetOn = false)
+        val rate = rollingRate(held, listOf(RateSample(0, 64_300, 20_000)))
+        assertEquals(0, rate.currentMa)
+        assertEquals(PowerFlow.IDLE, estimate(held, rate, SocThresholds()).flow)
+    }
+
+    @Test
     fun aBigLoadChangeMakesItRough() {
         val samples = listOf(RateSample(0, 50_000, -1_000))
         val rate = rollingRate(reading(30 * min, 49_500, -40_000), samples)

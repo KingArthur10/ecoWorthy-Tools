@@ -52,7 +52,7 @@ Priority: **M** = must (MVP), **S** = should, **C** = could.
 ### Charge limits and profiles ([spec](features/charge-limits-and-profiles.md))
 | ID | Requirement | Pri |
 |---|---|---|
-| FR-040 | A max-SOC limit enforced by the app, using the charge MOSFET with a resume threshold | M |
+| FR-040 | A max-SOC limit enforced by the app, using the charge MOSFET with a resume threshold (hub done 2026-11-11, opt-in per battery; phone not yet) | M |
 | FR-041 | A min-SOC reserve, which notifies by default | M |
 | FR-042 | Optional: cut discharge at the reserve, with a cancellable warning | S |
 | FR-043 | Named profiles (Storage, Trip, Outage) for each battery or bank | M |

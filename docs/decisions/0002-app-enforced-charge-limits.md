@@ -1,6 +1,6 @@
 # 0002: Enforce charge limits in the app, using the charge MOSFET
 
-**Status:** Proposed
+**Status:** Accepted (2026-11-11; implemented on the hub, opt-in per battery)
 **Date:** 2026-11-10
 
 ## Context
