@@ -17,6 +17,7 @@ On first run, Gradle downloads a JDK 21 toolchain if the system doesn't have one
 | Module | Contents |
 |---|---|
 | `core/` | Kotlin Multiplatform shared core. `protocol/jbd`: framing, frame reassembly, parsers, and a read-only client. `transport`: the `BleLink` interface that Android and BlueZ implement |
+| `hub/` | Linux hub (JVM). For now: a BlueZ `BleLink` over D-Bus, plus a spike CLI that polls batteries read-only |
 | `tools/` | Dev tools (for example, the Python read-only probe) |
 
 ## Documentation map

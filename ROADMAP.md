@@ -4,7 +4,7 @@
 - [x] Scan for the batteries: five JBD units found
 - [x] Read-only probe of each battery (basic info, cells, model). See `tools/jbd_probe.py`
 - [ ] Read the protection parameters (needs factory-mode entry, which is a write. Deferred until we design for it)
-- [ ] Spike: BlueZ BLE from the JVM (connect, read, and disconnect cleanly)
+- [x] Spike: BlueZ BLE from the JVM. It works (`docs/research/spike-bluez-jvm.md`)
 - [ ] Optional: capture the official app's traffic for a MOSFET toggle, to confirm 0xE1 on these boards
 - [ ] Confirm the control capabilities table against real hardware
 - [x] Decide ADR 0001 (Kotlin Multiplatform)

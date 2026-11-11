@@ -21,3 +21,4 @@ plugins {
 }
 
 include(":core")
+include(":hub")

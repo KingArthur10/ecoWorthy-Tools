@@ -20,7 +20,10 @@ batteries serve as shared test fixtures.
 - Python hub plus a Kotlin app: a faster hub, but two driver implementations that can drift apart.
 - A Rust core: the most build complexity, and a weaker Android BLE story.
 
+## Spike result (2026-11-10)
+The BlueZ-from-JVM spike **succeeded**, using dbus-java 5.2.2 (see `docs/research/spike-bluez-jvm.md`). No fallback is needed.
+
 ## Consequences
-- The Linux BLE layer is the main risk. Prototype it early (a spike: connect, read, and disconnect cleanly on
+- (Resolved) The Linux BLE layer was the main risk. Prototype it early (a spike: connect, read, and disconnect cleanly on
   BlueZ from the JVM). If it proves painful, fall back to a small native BlueZ helper behind the
   same interface.
