@@ -10,8 +10,11 @@
 | 3 | Should alarms take actions automatically? Proposal: profile limits act automatically; cutting discharge at the reserve is opt-in | Proposed |
 | 4 | ~~Charge-rate control~~. Generic chargers, so it's out of scope | Answered 2026-11-10 |
 | 5 | ~~Tech stack~~. Kotlin Multiplatform (ADR 0001) | Answered 2026-11-10 |
-| 6 | Hub mode at home, and when camping with the PC (ADR 0003). Which local link do you prefer: a phone hotspot or a hub access point? | Open |
+| 6 | Hub mode at home, and when camping with the PC (ADR 0003). Which local link do you prefer: a phone hotspot or a hub access point? | Open (comes up with the pairing milestone) |
 | 7 | Default polling interval: 10 min proposed, adaptive near limits | Proposed |
 | 8 | What powers the Linux PC when camping (one of these batteries, through an inverter or DC)? It affects the power budget | Open |
 | 9 | Distribution: sideloaded APK, F-Droid, or Play Store? Open source? | Open |
 | 10 | Which internet-only extras, if any? | Open |
+| 11 | Next milestone: pairing/LAN (phone ↔ hub) or controls (MOSFETs, profiles, reserve)? | Open (asked 2026-11-10) |
+| 12 | Real nicknames for the 5 batteries (the hub has placeholders "Test 1"–"Test 5") | Open |
+| 13 | Physical wiring of the batteries (which are in parallel or series banks)? Needed for meaningful groups and estimates | Open |
