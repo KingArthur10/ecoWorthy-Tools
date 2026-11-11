@@ -142,6 +142,43 @@ class HubServiceTest {
         svc.reloadIfChangedExternally()
         assertEquals(listOf("New name", "Added"), svc.state.value.favorites.map { it.nickname })
         assertEquals(50, svc.state.value.readings["A"]!!.stateOfChargePct) // our reading survives
+        assertEquals(1, svc.state.value.recent["A"]!!.size) // and so do its rate samples
+    }
+
+    @Test
+    fun estimatesFollowReadingsAndThresholdsAreSetThroughTheApi() = testApplication {
+        // Discharging at 10 A: 100 Ah battery loses 5 Ah every 30 min.
+        var soc = 60
+        val svc = service(listOf(Favorite("A5:C2:39:57:73:E3", "Garage", groupId = "g"))) {
+            reading(soc).copy(currentMa = -10_000)
+        }
+        svc.refresh("A5:C2:39:57:73:E3")
+        now += 30 * 60_000; soc = 55
+        svc.refresh("A5:C2:39:57:73:E3")
+        application { hubModule(svc, history, CoroutineScope(Dispatchers.Default)) }
+        val client = createClient { defaultRequest { header(HttpHeaders.Host, "localhost:8640") } }
+        suspend fun put(path: String, body: String) = client.request(path) {
+            method = HttpMethod.Put
+            header("X-Battery-Hub", "1")
+            contentType(ContentType.Application.Json); setBody(body)
+        }
+
+        assertEquals(HttpStatusCode.NoContent, put("/api/favorites/A5:C2:39:57:73:E3/thresholds", """{"dischargeToPct":20}""").status)
+        assertEquals(HttpStatusCode.NoContent, put("/api/groups/g/thresholds", """{"dischargeToPct":50,"chargeToPct":90}""").status)
+        assertEquals(HttpStatusCode.NoContent, put("/api/thresholds", """{"dischargeToPct":10}""").status)
+        assertEquals(HttpStatusCode.BadRequest, put("/api/thresholds", """{"dischargeToPct":90,"chargeToPct":80}""").status)
+        assertEquals(HttpStatusCode.NotFound, put("/api/groups/nope/thresholds", "{}").status)
+
+        val o = json.decodeFromString<OverviewDto>(client.get("/api/overview").bodyAsText())
+        val e = o.batteries.getValue("A5:C2:39:57:73:E3").estimate!!
+        assertEquals(-10_000, e.rateMa)
+        assertEquals(20, e.targetPct)
+        assertEquals(35 * 360_000L, e.durationMs) // 35 Ah at 10 A
+        assertTrue(e.confident)
+        assertEquals(5 * 360_000L, o.groups.single().estimate!!.durationMs) // 5 Ah to the group's 50%
+        assertEquals(45 * 360_000L, o.totalEstimate!!.durationMs) // to 10%
+        assertEquals(10, o.totalThresholds.low)
+        assertEquals(90, StateStore(stateFile).load().groups.single().thresholds.high) // saved
     }
 
     @Test

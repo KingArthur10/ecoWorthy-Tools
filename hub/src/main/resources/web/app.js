@@ -44,11 +44,52 @@ function flow(r) {
   return r.currentMa > 0 ? "Charging" : "Discharging";
 }
 
+// --- Time estimates (mirrors core Estimates.kt: formatDuration, describe, basis) ---------------
+
+function duration(ms) {
+  const min = Math.floor(ms / 60000);
+  if (min < 1) return "under a minute";
+  if (min < 60) return `${min} min`;
+  if (min < 1440) return min % 60 === 0 ? `${min / 60} h` : `${Math.floor(min / 60)} h ${min % 60} min`;
+  if (min < 144000) { const h = Math.floor(min / 60) % 24; return h === 0 ? `${Math.floor(min / 1440)} d` : `${Math.floor(min / 1440)} d ${h} h`; }
+  return "over 100 days";
+}
+
+function describeEstimate(e, now) {
+  if (e == null || e.targetPct == null || e.durationMs == null) return null;
+  const charging = e.flow === "CHARGING", t = e.targetPct;
+  const name = charging && t === 100 ? "Full" : !charging && t === 0 ? "Empty" : charging ? `Up to ${t}%` : `Down to ${t}%`;
+  if (e.durationMs === 0) return charging && t === 100 ? "Full" : !charging && t === 0 ? "Empty" : charging ? `At or above ${t}%` : `At or below ${t}%`;
+  const left = e.asOfMs + e.durationMs - now;
+  return left <= 0 ? `${name} by now, if the rate held` : `${name} in ${duration(left)}`;
+}
+
+const basis = (e) => (e.spanMs === 0 ? "Based on the latest reading only" : `Average over the last ${duration(e.spanMs)}`);
+
+/** "around 9:40 PM", with the weekday when it isn't today. */
+function clockTime(ms, now) {
+  const d = new Date(ms);
+  const sameDay = d.toDateString() === new Date(now).toDateString();
+  return "around " + d.toLocaleString([], sameDay ? { hour: "numeric", minute: "2-digit" } : { weekday: "short", hour: "numeric", minute: "2-digit" });
+}
+
+function estimateLine(e, now) {
+  const text = describeEstimate(e, now);
+  if (!text) return "";
+  const eta = e.asOfMs + e.durationMs;
+  const parts = [text];
+  if (e.durationMs > 0 && eta > now) parts.push(clockTime(eta, now));
+  if (!e.confident) parts.push("rough");
+  return `<div class="estimate${e.confident ? "" : " rough"}" title="${esc(basis(e))}">⏱ ${esc(parts.join(" · "))}</div>`;
+}
+
+const thresholdsLabel = (t) => `Discharge to ${t?.dischargeToPct ?? 0}% · charge to ${t?.chargeToPct ?? 100}%`;
+
 const bar = (pct) => `<div class="bar"><span style="width:${Math.max(0, Math.min(100, pct))}%"></span></div>`;
 
 // --- Rendering ------------------------------------------------------------------------------
 
-function aggregateBody(s, now) {
+function aggregateBody(s, now, est) {
   const extra = [`${energy(s.energyRemainingMwh)} of ${energy(s.energyCapacityMwh)}`];
   if (s.voltageMv != null) extra.push(volts(s.voltageMv));
   if (s.currentMa != null) extra.push(amps(s.currentMa));
@@ -59,6 +100,7 @@ function aggregateBody(s, now) {
     <div class="row"><span class="big">${s.stateOfChargePct}%</span><span>${ah(s.remainingMah)} of ${ah(s.capacityMah)}</span></div>
     ${bar(s.stateOfChargePct)}
     <div>${extra.join(" · ")}</div>
+    ${estimateLine(est, now)}
     <div class="small ${partial ? "error" : "muted"}">${count} · ${partial ? `only ${s.reportingCount} have data · ` : ""}oldest ${age(now, s.oldestReadingMs)}</div>`;
 }
 
@@ -82,7 +124,8 @@ function batteryCard(b, now) {
     ? `<div class="row"><span class="big">${r.stateOfChargePct}%</span><span>${volts(r.packVoltageMv)}</span><span>${amps(r.currentMa)}</span>${
         r.temperaturesDeciC.length ? `<span>${celsius(r.temperaturesDeciC[0])}</span>` : ""}</div>
        ${bar(r.stateOfChargePct)}
-       <div>${ah(r.remainingCapacityMah)} of ${ah(capacity(r))} · ${energy((r.remainingCapacityMah * nominalMv(r)) / 1000)} of ${energy((capacity(r) * nominalMv(r)) / 1000)}</div>`
+       <div>${ah(r.remainingCapacityMah)} of ${ah(capacity(r))} · ${energy((r.remainingCapacityMah * nominalMv(r)) / 1000)} of ${energy((capacity(r) * nominalMv(r)) / 1000)}</div>
+       ${estimateLine(b.estimate, now)}`
     : `<div class="muted">No data yet</div>`;
   return `<article class="card battery" data-mac="${esc(b.favorite.mac)}" tabindex="0">
     <div class="card-head"><span class="name">${esc(b.favorite.nickname)}</span>${signal(r?.rssiDbm)}
@@ -99,12 +142,13 @@ function render() {
     html = `<p class="muted">No favorites yet. Click <strong>Search</strong> to find batteries nearby, or run <code>battery-hub import-phone</code> to copy them from the phone.</p>`;
   }
   if (macs.length >= 2 && o.total) {
-    html += `<section class="card total"><div class="card-head"><span class="name">All batteries</span></div>${aggregateBody(o.total, now)}</section>`;
+    html += `<section class="card total"><div class="card-head"><span class="name">All batteries</span>
+      <button type="button" class="more" data-total="1" aria-label="Actions for all batteries">⋮</button></div>${aggregateBody(o.total, now, o.totalEstimate)}</section>`;
   }
   for (const g of o.groups) {
     html += `<section class="card group"><div class="card-head"><span class="name">${esc(g.group.name)}</span><span class="small">${wiringLabel(g.group.wiring)}</span>
       <button type="button" class="more" data-group="${esc(g.group.id)}" aria-label="Actions for group ${esc(g.group.name)}">⋮</button></div>
-      ${g.members.length === 0 ? `<div class="small muted">No batteries yet</div>` : g.stats ? aggregateBody(g.stats, now) : `<div class="small muted">No data yet</div>`}</section>`;
+      ${g.members.length === 0 ? `<div class="small muted">No batteries yet</div>` : g.stats ? aggregateBody(g.stats, now, g.estimate) : `<div class="small muted">No data yet</div>`}</section>`;
     html += `<div class="grid">${g.members.map((m) => batteryCard(o.batteries[m], now)).join("")}</div>`;
   }
   if (o.groups.length && o.ungrouped.length) html += `<h3 class="section-title">Not in a group</h3>`;
@@ -130,6 +174,19 @@ function chart(points, value, fmt, alt) {
     <text x="${P}" y="${H - 4}">${new Date(t0).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</text>
     <text x="${W - 2}" y="${H - 4}" text-anchor="end">${new Date(t1).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</text>
     <path class="line${alt ? " alt" : ""}" d="${d}"/></svg>`;
+}
+
+function estimateSection(e, t, now) {
+  const field = (k, v) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`;
+  let body;
+  if (!e || e.flow === "IDLE") body = `<p class="small muted">Idle: no estimate while no current is flowing.</p>`;
+  else {
+    body = `${estimateLine(e, now)}<dl class="fields">${field("Average current", amps(e.rateMa))}${field("Rate", basis(e))}</dl>`;
+    if (!e.confident) body += `<p class="small muted">Rough: ${e.spanMs === 0 ? "not enough history yet" : "the load or charger changed recently"}.</p>`;
+  }
+  return `<section class="card"><div class="card-head"><strong class="name">Time estimate</strong>
+      <button type="button" id="detail-thresholds">Thresholds…</button></div>
+    ${body}<div class="small muted">${esc(thresholdsLabel(t))}</div></section>`;
 }
 
 let historyCache = { mac: null, at: 0, points: [] };
@@ -161,6 +218,7 @@ async function renderDetail() {
         ${field("Remaining", `${ah(r.remainingCapacityMah)} of ${ah(capacity(r))}`)}
         ${r.temperaturesDeciC.map((t, i) => field(r.temperaturesDeciC.length === 1 ? "Temperature" : `Temperature ${i + 1}`, celsius(t))).join("")}
       </dl></section>
+      ${estimateSection(b.estimate, b.favorite.thresholds, now)}
       <section class="card"><strong>Last 24 hours: charge</strong><div id="chart-soc"></div>
         <strong>Current</strong><div id="chart-current"></div></section>
       <section class="card"><strong>Cells</strong><dl class="fields">
@@ -180,6 +238,7 @@ async function renderDetail() {
     html += `<p>No data yet. Click Refresh now.</p>`;
   }
   $("#detail-body").innerHTML = html;
+  $("#detail-thresholds")?.addEventListener("click", () => editThresholds(`/api/favorites/${encodeURIComponent(openMac)}/thresholds`, b.favorite.nickname, b.favorite.thresholds));
   if (r) {
     const points = await loadHistory(openMac);
     const soc = $("#chart-soc"), cur = $("#chart-current");
@@ -248,6 +307,24 @@ async function askName(title, initial, label = "Name") {
   return value && name ? name : null;
 }
 
+/** Asks for estimate thresholds; blank = default. PUTs them to [url]. */
+async function editThresholds(url, name, t) {
+  const input = (field, label, placeholder, help) => `<label>${label}
+      <input type="number" name="${field}" min="0" max="100" step="1" placeholder="${placeholder}" value="${t?.[field] ?? ""}">
+      <span class="small muted">${help}</span></label>`;
+  const { value, data } = await modal(`Thresholds for ${name}`,
+    `<div class="thresholds">
+       ${input("dischargeToPct", "Discharge to (%)", "0", "Blank = 0%")}
+       ${input("chargeToPct", "Charge to (%)", "100", "Blank = 100%")}
+     </div>
+     <p class="small muted">Time estimates count toward these levels. Nothing is sent to the battery.</p>`,
+    [{ label: "Cancel", value: "cancel" }, { label: "Reset", value: "reset" }, { label: "Save", value: "ok", cls: "primary" }]);
+  if (!value) return;
+  const num = (k) => { const v = (data.get(k) ?? "").trim(); return v === "" ? null : Number(v); };
+  const body = value === "reset" ? {} : { dischargeToPct: num("dischargeToPct"), chargeToPct: num("chargeToPct") };
+  return act(() => api("PUT", url, body));
+}
+
 const WIRINGS = ["PARALLEL", "SERIES", "NONE"];
 
 async function askGroup(title, name, wiring) {
@@ -285,6 +362,7 @@ async function batteryActions(mac) {
     { label: "Refresh now", value: "refresh" },
     { label: "Rename…", value: "rename" },
     { label: "Group…", value: "group" },
+    { label: "Thresholds…", value: "thresholds" },
     { label: "Move up", value: "up" },
     { label: "Move down", value: "down" },
     { label: "Remove from favorites…", value: "remove", cls: "danger" },
@@ -298,6 +376,7 @@ async function batteryActions(mac) {
       return;
     }
     case "group": return pickGroup(b);
+    case "thresholds": return editThresholds(`/api/favorites/${enc}/thresholds`, name, b.favorite.thresholds);
     case "up": return act(() => api("POST", `/api/favorites/${enc}/move`, { delta: -1 }));
     case "down": return act(() => api("POST", `/api/favorites/${enc}/move`, { delta: 1 }));
     case "remove":
@@ -335,8 +414,10 @@ async function groupActions(id) {
   if (!g) return;
   const choice = await chooseAction(g.name, [
     { label: "Rename or change wiring…", value: "edit" },
+    { label: "Thresholds…", value: "thresholds" },
     { label: "Delete group…", value: "delete", cls: "danger" },
   ]);
+  if (choice === "thresholds") return editThresholds(`/api/groups/${encodeURIComponent(id)}/thresholds`, g.name, g.thresholds);
   if (choice === "edit") {
     const r = await askGroup("Edit group", g.name, g.wiring);
     if (r) return act(() => api("PATCH", `/api/groups/${encodeURIComponent(id)}`, r));
@@ -441,6 +522,7 @@ $("#overview").addEventListener("click", (e) => {
   if (more) {
     if (more.dataset.mac) batteryActions(more.dataset.mac);
     else if (more.dataset.group) groupActions(more.dataset.group);
+    else if (more.dataset.total) editThresholds("/api/thresholds", "all batteries", overview.totalThresholds);
     return;
   }
   const card = e.target.closest(".card.battery");

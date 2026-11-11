@@ -5,6 +5,9 @@ import app.batterycommander.domain.BatteryGroup
 import app.batterycommander.domain.BatteryReading
 import app.batterycommander.domain.Favorite
 import app.batterycommander.domain.Settings
+import app.batterycommander.domain.SocThresholds
+import app.batterycommander.domain.TimeEstimate
+import app.batterycommander.domain.socThresholds
 import app.batterycommander.domain.Wiring
 import app.batterycommander.domain.normalizeMac
 import app.batterycommander.domain.summarize
@@ -39,10 +42,10 @@ import kotlinx.serialization.json.Json
 import kotlin.time.Duration.Companion.seconds
 
 @Serializable
-data class BatteryDto(val favorite: Favorite, val reading: BatteryReading?, val status: PollStatus)
+data class BatteryDto(val favorite: Favorite, val reading: BatteryReading?, val status: PollStatus, val estimate: TimeEstimate? = null)
 
 @Serializable
-data class GroupDto(val group: BatteryGroup, val stats: AggregateStats?, val members: List<String>)
+data class GroupDto(val group: BatteryGroup, val stats: AggregateStats?, val members: List<String>, val estimate: TimeEstimate? = null)
 
 /** Everything the dashboard renders. Batteries are referenced by MAC from groups/ungrouped. */
 @Serializable
@@ -50,6 +53,8 @@ data class OverviewDto(
     val nowMs: Long,
     val settings: Settings,
     val total: AggregateStats?,
+    val totalEstimate: TimeEstimate? = null,
+    val totalThresholds: SocThresholds = SocThresholds(),
     val groups: List<GroupDto>,
     val ungrouped: List<String>,
     val batteries: Map<String, BatteryDto>,
@@ -63,9 +68,13 @@ fun HubService.overview(nowMs: Long = System.currentTimeMillis()): OverviewDto {
         nowMs = nowMs,
         settings = s.settings,
         total = summary.total,
-        groups = summary.groups.map { g -> GroupDto(g.group, g.stats, g.members.map { it.mac }) },
+        totalEstimate = summary.totalEstimate,
+        totalThresholds = s.totalThresholds,
+        groups = summary.groups.map { g -> GroupDto(g.group, g.stats, g.members.map { it.mac }, g.estimate) },
         ungrouped = summary.ungrouped.map { it.mac },
-        batteries = s.favorites.associate { f -> f.mac to BatteryDto(f, s.readings[f.mac], statuses[f.mac] ?: PollStatus()) },
+        batteries = s.favorites.associate { f ->
+            f.mac to BatteryDto(f, s.readings[f.mac], statuses[f.mac] ?: PollStatus(), summary.estimates[f.mac])
+        },
     )
 }
 
@@ -90,6 +99,12 @@ data class ScanRequest(val seconds: Int = 15)
 @Serializable
 data class SettingsRequest(val pollIntervalMinutes: Int)
 
+/** Estimate thresholds in percent; null (or omitted) = the default, 0% and 100%. */
+@Serializable
+data class ThresholdsRequest(val dischargeToPct: Int? = null, val chargeToPct: Int? = null) {
+    fun validated(): SocThresholds = socThresholds(dischargeToPct, chargeToPct)
+}
+
 @Serializable
 data class ErrorDto(val error: String)
 
@@ -101,7 +116,7 @@ val LOOPBACK_HOSTS = setOf("localhost", "127.0.0.1", "::1")
 
 /**
  * JSON API plus the static dashboard (resources/web). It changes configuration (favorites,
- * groups) but never battery state: there's no authentication yet, so control endpoints wait
+ * groups, estimate thresholds) but never battery state: there's no authentication yet, so control endpoints wait
  * for pairing (docs/safety.md).
  *
  * Guards: requests must name an allowed Host (stops DNS rebinding), and anything other than
@@ -202,6 +217,10 @@ fun Application.hubModule(
             service.moveFavorite(call.parameters["mac"]!!, call.receive<MoveRequest>().delta)
             call.respond(HttpStatusCode.NoContent)
         }
+        put("/api/favorites/{mac}/thresholds") {
+            service.setFavoriteThresholds(call.parameters["mac"]!!, call.receive<ThresholdsRequest>().validated())
+            call.respond(HttpStatusCode.NoContent)
+        }
         delete("/api/favorites/{mac}") {
             service.removeFavorite(call.parameters["mac"]!!)
             call.respond(HttpStatusCode.NoContent)
@@ -216,6 +235,14 @@ fun Application.hubModule(
         patch("/api/groups/{id}") {
             val req = call.receive<GroupRequest>()
             service.updateGroup(call.parameters["id"]!!, req.name, req.wiring)
+            call.respond(HttpStatusCode.NoContent)
+        }
+        put("/api/groups/{id}/thresholds") {
+            service.setGroupThresholds(call.parameters["id"]!!, call.receive<ThresholdsRequest>().validated())
+            call.respond(HttpStatusCode.NoContent)
+        }
+        put("/api/thresholds") {
+            service.setTotalThresholds(call.receive<ThresholdsRequest>().validated())
             call.respond(HttpStatusCode.NoContent)
         }
         delete("/api/groups/{id}") {

@@ -15,6 +15,8 @@ data class Favorite(
     val notes: String = "",
     /** [BatteryGroup.id] this battery belongs to, if any. */
     val groupId: String? = null,
+    /** Levels its time estimate counts toward. */
+    val thresholds: SocThresholds = SocThresholds(),
 )
 
 @Serializable
@@ -48,12 +50,7 @@ data class BatteryReading(
     val powerMw: Long get() = packVoltageMv.toLong() * currentMa / 1000
     val cellDeltaMv: Int? get() = if (cellVoltagesMv.isEmpty()) null else cellVoltagesMv.max() - cellVoltagesMv.min()
 
-    val flow: PowerFlow
-        get() = when {
-            abs(currentMa) < IDLE_THRESHOLD_MA -> PowerFlow.IDLE
-            currentMa > 0 -> PowerFlow.CHARGING
-            else -> PowerFlow.DISCHARGING
-        }
+    val flow: PowerFlow get() = flowOf(currentMa)
 
     companion object {
         /** Below this, current is treated as BMS measurement noise. */
@@ -62,6 +59,12 @@ data class BatteryReading(
 }
 
 enum class PowerFlow { CHARGING, DISCHARGING, IDLE }
+
+fun flowOf(currentMa: Int): PowerFlow = when {
+    abs(currentMa) < BatteryReading.IDLE_THRESHOLD_MA -> PowerFlow.IDLE
+    currentMa > 0 -> PowerFlow.CHARGING
+    else -> PowerFlow.DISCHARGING
+}
 
 fun JbdSnapshot.toReading(timestampMs: Long, rssiDbm: Int?): BatteryReading = BatteryReading(
     timestampMs = timestampMs,

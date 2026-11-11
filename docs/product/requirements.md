@@ -24,7 +24,7 @@ Priority: **M** = must (MVP), **S** = should, **C** = could.
 | FR-013 | A Search button lists batteries that aren't favorites, below the favorites | M |
 | FR-014 | A "Refresh all" action starts a polling cycle right away | M |
 | FR-019 | Automatic refresh interval, set per device (phone and hub separately): Manual only, or 1 min to 2 h (default 10 min). Manual leaves the radio idle except on explicit refresh or search | M |
-| FR-015 | A bank summary row with combined SOC and time estimate (SOC, Ah, and Wh done; time estimate still to do) | S |
+| FR-015 | A bank summary row with combined SOC and time estimate (done 2026-11-11) | S |
 | FR-017 | Each favorite card shows remaining and total capacity (Ah and Wh) | M |
 | FR-018 | An "All batteries" total card: combined SOC, Ah, Wh, and power, with partial data flagged | M |
 | FR-016 | Show the signal strength's source (phone or hub) | S |
@@ -34,7 +34,7 @@ Priority: **M** = must (MVP), **S** = should, **C** = could.
 |---|---|---|
 | FR-020 | Opens with the cached data for one battery: cells, temperatures, MOSFETs, protections, cycles | M |
 | FR-021 | A "Refresh now" button does an immediate full read | M |
-| FR-022 | Estimated time to the min or max threshold | S |
+| FR-022 | Estimated time to the min or max threshold (done 2026-11-11; thresholds are set per battery, group, and all batteries, for estimates only) | S |
 | FR-023 | A Live mode stays connected while the screen is open | C |
 | FR-024 | Show the active charge profile and allow switching it | S |
 
@@ -65,9 +65,9 @@ Priority: **M** = must (MVP), **S** = should, **C** = could.
 | FR-050 | Define banks by hand as series and parallel groups (flat groups done; nesting such as 2S2P still to do) | S |
 | FR-051 | A visual diagram of each bank | S |
 | FR-052 | Combined voltage, capacity, SOC, and energy for each bank | S |
-| FR-053 | Time-to-reserve and time-to-max estimates from the average power | S |
+| FR-053 | Time-to-reserve and time-to-max estimates from the average power (done 2026-11-11: a 30 min rolling average of the BMS's remaining capacity; no taper correction yet) | S |
 | FR-054 | Warn about mismatched batteries within a bank | C |
-| FR-055 | Show how confident each estimate is | C |
+| FR-055 | Show how confident each estimate is (done 2026-11-11: rough estimates are greyed and labelled) | C |
 
 ### Alarms ([spec](features/alarms-and-notifications.md))
 | ID | Requirement | Pri |

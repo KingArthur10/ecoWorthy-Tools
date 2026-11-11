@@ -10,7 +10,7 @@ when decisions change. Start with `README.md` (doc map, build and install), `ROA
 - Commits are authored as `KingArthur10 <8808608+KingArthur10@users.noreply.github.com>` (repo-local git config; the
   machine's global config is a placeholder). Keep it that way; never publish the user's personal email.
 
-## Status (last session: 2026-11-10)
+## Status (last session: 2026-11-11)
 - **Done and tested on real hardware:** the read-only JBD driver (`core`); the Android app (favorites, nicknames,
   search/identify, overview with all-batteries totals and groups, detail, refresh); the Linux hub (`battery-hub`
   service, SQLite history, standalone web dashboard with search/favorites/groups/charts, CLI).
@@ -25,7 +25,11 @@ when decisions change. Start with `README.md` (doc map, build and install), `ROA
      with the user's explicit OK** (toggle charge off/on on one idle battery). Follow `docs/safety.md`.
 - **Refresh interval** is a per-device setting (`StoredState.settings`; phone Settings dialog, hub dashboard Settings,
   `battery-hub interval`). Manual only = no automatic radio use. Installed on the phone and the hub (2026-11-10).
-- **Smaller gaps:** no Android background monitoring (it only polls while visible; needs a foreground service); no time-to-empty/full estimates; no nested banks (2S2P);
+- **Time estimates** (2026-11-11, ADR 0004): every battery, group, and All batteries card shows time to its
+  discharge-to/charge-to threshold (default 0/100%, estimate-only, never sent to the BMS), from a 30 min rolling
+  average of the BMS's remaining capacity (`StoredState.recent`). Built and unit-tested; screenshots of the dashboard checked.
+  **Not yet installed** on the phone or the hub unless a later note says so.
+- **Smaller gaps:** no Android background monitoring (it only polls while visible; needs a foreground service); no taper correction for estimates near full; no nested banks (2S2P);
   the hub has no continuous passive scanning.
 
 ## Hardware facts (verified; details in docs/hardware/)
@@ -53,7 +57,7 @@ when decisions change. Start with `README.md` (doc map, build and install), `ROA
 
 ## Build, run, test
 - The system Java is a JRE 25 with no javac. Gradle downloads a JDK 21 toolchain automatically (foojay).
-- `./gradlew :core:jvmTest :hub:test` (unit tests, about 67), `./gradlew :app:assembleDebug :app:lintDebug` (lint must stay clean).
+- `./gradlew :core:jvmTest :hub:test` (unit tests, about 70), `./gradlew :app:assembleDebug :app:lintDebug` (lint must stay clean).
 - Android SDK: project-local `.android-sdk/` (gitignored, along with `local.properties`). Recreate it with `tools/setup-android-sdk.sh`.
   compileSdk 37, minSdk 31. adb: `.android-sdk/platform-tools/adb`. Install: `./gradlew :app:installDebug` (phone over USB).
 - Hub: `tools/install-hub.sh` (stops the service, reinstalls, restarts). Manual: `./gradlew :hub:installDist`, then
@@ -62,5 +66,7 @@ when decisions change. Start with `README.md` (doc map, build and install), `ROA
   touched; stop the user's service first if you need the radio exclusively.
 - Dashboard screenshots: `firefox --headless --screenshot` fires before fetches finish, so load a harness copy of
   `index.html` with a stubbed `window.fetch` returning captured API JSON (that's how it was checked last time).
+  If the user's Firefox is open, add `--no-remote --profile <scratch dir>`. To capture a dialog, open it from an inline
+  script right after `app.js` (synchronously; `setTimeout` fires after the screenshot).
 - Protocol test fixtures: `core/src/commonTest/.../Captures.kt` (real frames, from `docs/hardware/captures/`).
 - Always check that no battery is left connected after BLE experiments: `bluetoothctl devices Connected`.

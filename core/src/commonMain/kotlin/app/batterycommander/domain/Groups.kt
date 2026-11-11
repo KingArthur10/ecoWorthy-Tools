@@ -11,6 +11,8 @@ data class BatteryGroup(
     val id: String,
     val name: String,
     val wiring: Wiring = Wiring.PARALLEL,
+    /** Levels the group's time estimate counts toward (independent of its members' own). */
+    val thresholds: SocThresholds = SocThresholds(),
 )
 
 @Serializable

@@ -64,6 +64,8 @@ import app.batterycommander.domain.BatteryReading
 import app.batterycommander.domain.MANUAL_REFRESH
 import app.batterycommander.domain.MAX_NAME_LENGTH
 import app.batterycommander.domain.POLL_INTERVAL_CHOICES
+import app.batterycommander.domain.SocThresholds
+import app.batterycommander.domain.TimeEstimate
 import app.batterycommander.domain.Wiring
 import app.batterycommander.domain.capacityMah
 import app.batterycommander.domain.formatAge
@@ -91,6 +93,7 @@ fun OverviewScreen(repo: BatteryRepository, onOpen: (String) -> Unit) {
     var renamingGroup by remember { mutableStateOf<BatteryGroup?>(null) }
     var rewiringGroup by remember { mutableStateOf<BatteryGroup?>(null) }
     var showSettings by remember { mutableStateOf(false) }
+    var editingThresholds by remember { mutableStateOf<ThresholdTarget?>(null) }
     val pollMinutes by repo.pollIntervalMinutes.collectAsStateWithLifecycle()
 
     val favoriteCard: @Composable (BatteryUi) -> Unit = { b ->
@@ -100,6 +103,9 @@ fun OverviewScreen(repo: BatteryRepository, onOpen: (String) -> Unit) {
             onRefresh = { scope.launch { repo.refresh(b.favorite.mac) } },
             onRename = { renaming = b },
             onGroup = { pickingGroupFor = b },
+            onThresholds = {
+                editingThresholds = ThresholdTarget(b.favorite.nickname, b.favorite.thresholds) { repo.setThresholds(b.favorite.mac, it) }
+            },
             onMoveUp = { repo.move(b.favorite.mac, -1) },
             onMoveDown = { repo.move(b.favorite.mac, +1) },
             onRemove = { repo.remove(b.favorite.mac) },
@@ -143,7 +149,11 @@ fun OverviewScreen(repo: BatteryRepository, onOpen: (String) -> Unit) {
             }
             val total = overview.total
             if (batteries.size >= 2 && total != null) {
-                item(key = "total") { TotalCard("All batteries", total, now) }
+                item(key = "total") {
+                    TotalCard("All batteries", total, overview.totalEstimate, now) {
+                        editingThresholds = ThresholdTarget("all batteries", overview.totalThresholds, repo::setTotalThresholds)
+                    }
+                }
             }
             for (g in overview.groups) {
                 item(key = "g-" + g.group.id) {
@@ -151,6 +161,9 @@ fun OverviewScreen(repo: BatteryRepository, onOpen: (String) -> Unit) {
                         g, now,
                         onRename = { renamingGroup = g.group },
                         onRewire = { rewiringGroup = g.group },
+                        onThresholds = {
+                            editingThresholds = ThresholdTarget(g.group.name, g.group.thresholds) { repo.setGroupThresholds(g.group.id, it) }
+                        },
                         onDelete = { repo.deleteGroup(g.group.id) },
                     )
                 }
@@ -202,6 +215,14 @@ fun OverviewScreen(repo: BatteryRepository, onOpen: (String) -> Unit) {
             current = pollMinutes,
             onDismiss = { showSettings = false },
             onPick = { repo.setPollInterval(it); showSettings = false },
+        )
+    }
+    editingThresholds?.let { t ->
+        ThresholdsDialog(
+            title = "Thresholds for ${t.name}",
+            initial = t.initial,
+            onDismiss = { editingThresholds = null },
+            onSave = { t.save(it); editingThresholds = null },
         )
     }
     pickingGroupFor?.let { b ->
@@ -275,6 +296,9 @@ fun OverviewScreen(repo: BatteryRepository, onOpen: (String) -> Unit) {
     }
 }
 
+/** What the thresholds dialog is editing: a battery, a group, or all batteries. */
+private class ThresholdTarget(val name: String, val initial: SocThresholds, val save: (SocThresholds) -> Unit)
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FavoriteCard(
@@ -284,6 +308,7 @@ private fun FavoriteCard(
     onRefresh: () -> Unit,
     onRename: () -> Unit,
     onGroup: () -> Unit,
+    onThresholds: () -> Unit,
     onMoveUp: () -> Unit,
     onMoveDown: () -> Unit,
     onRemove: () -> Unit,
@@ -318,6 +343,7 @@ private fun FavoriteCard(
                             energy(r.capacityMah.toLong() * r.nominalVoltageMv / 1000),
                         style = MaterialTheme.typography.bodyMedium,
                     )
+                    EstimateLine(b.estimate, now)
                 }
                 StatusLine(b, now)
             }
@@ -326,6 +352,7 @@ private fun FavoriteCard(
             DropdownMenuItem(text = { Text("Refresh now") }, onClick = { menu = false; onRefresh() })
             DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; onRename() })
             DropdownMenuItem(text = { Text("Group…") }, onClick = { menu = false; onGroup() })
+            DropdownMenuItem(text = { Text("Thresholds…") }, onClick = { menu = false; onThresholds() })
             DropdownMenuItem(text = { Text("Move up") }, onClick = { menu = false; onMoveUp() })
             DropdownMenuItem(text = { Text("Move down") }, onClick = { menu = false; onMoveDown() })
             DropdownMenuItem(text = { Text("Remove from favorites") }, onClick = { menu = false; onRemove() })
@@ -411,22 +438,36 @@ private fun SectionHeader(title: String, busy: Boolean = false) {
 }
 
 /** Totals for every favorite. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun TotalCard(title: String, stats: AggregateStats, now: Long) {
-    Card(
-        Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-    ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            AggregateBody(stats, now)
+private fun TotalCard(title: String, stats: AggregateStats, estimate: TimeEstimate?, now: Long, onThresholds: () -> Unit) {
+    var menu by remember { mutableStateOf(false) }
+    Box {
+        Card(
+            Modifier.fillMaxWidth().combinedClickable(onClick = { menu = true }, onLongClick = { menu = true }),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+        ) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                AggregateBody(stats, now, estimate)
+            }
+        }
+        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            DropdownMenuItem(text = { Text("Thresholds…") }, onClick = { menu = false; onThresholds() })
         }
     }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun GroupCard(g: GroupUi, now: Long, onRename: () -> Unit, onRewire: () -> Unit, onDelete: () -> Unit) {
+private fun GroupCard(
+    g: GroupUi,
+    now: Long,
+    onRename: () -> Unit,
+    onRewire: () -> Unit,
+    onThresholds: () -> Unit,
+    onDelete: () -> Unit,
+) {
     var menu by remember { mutableStateOf(false) }
     Box(Modifier.padding(top = 8.dp)) {
         Card(
@@ -444,20 +485,21 @@ private fun GroupCard(g: GroupUi, now: Long, onRename: () -> Unit, onRewire: () 
                 when {
                     g.members.isEmpty() -> Text("No batteries yet. Long-press a battery → Group…", style = MaterialTheme.typography.bodySmall)
                     g.stats == null -> Text("No data yet", style = MaterialTheme.typography.bodySmall)
-                    else -> AggregateBody(g.stats, now)
+                    else -> AggregateBody(g.stats, now, g.estimate)
                 }
             }
         }
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
             DropdownMenuItem(text = { Text("Rename group") }, onClick = { menu = false; onRename() })
             DropdownMenuItem(text = { Text("Change wiring") }, onClick = { menu = false; onRewire() })
+            DropdownMenuItem(text = { Text("Thresholds…") }, onClick = { menu = false; onThresholds() })
             DropdownMenuItem(text = { Text("Delete group") }, onClick = { menu = false; onDelete() })
         }
     }
 }
 
 @Composable
-private fun AggregateBody(s: AggregateStats, now: Long) {
+private fun AggregateBody(s: AggregateStats, now: Long, estimate: TimeEstimate?) {
     Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("${s.stateOfChargePct}%", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
         Text("${ah(s.remainingMah)} of ${ah(s.capacityMah)}", modifier = Modifier.padding(bottom = 4.dp))
@@ -472,6 +514,7 @@ private fun AggregateBody(s: AggregateStats, now: Long) {
         }.joinToString(" · "),
         style = MaterialTheme.typography.bodyMedium,
     )
+    EstimateLine(estimate, now)
     val count = if (s.batteryCount == 1) "1 battery" else "${s.batteryCount} batteries"
     Text(
         if (s.isPartial) "$count · only ${s.reportingCount} have data · oldest ${formatAge(now, s.oldestReadingMs)}"

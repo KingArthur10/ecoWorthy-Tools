@@ -43,7 +43,16 @@ fun StoredState.renameFavorite(mac: String, nickname: String): StoredState {
 
 /** Removes a favorite and its cached reading. */
 fun StoredState.removeFavorite(mac: String): StoredState =
-    copy(favorites = favorites.filterNot { it.mac == mac }, readings = readings - mac)
+    copy(favorites = favorites.filterNot { it.mac == mac }, readings = readings - mac, recent = recent - mac)
+
+/** Estimate thresholds; validate them with [socThresholds]. */
+fun StoredState.setFavoriteThresholds(mac: String, t: SocThresholds): StoredState =
+    copy(favorites = favorites.map { if (it.mac == mac) it.copy(thresholds = t) else it })
+
+fun StoredState.setGroupThresholds(id: String, t: SocThresholds): StoredState =
+    copy(groups = groups.map { if (it.id == id) it.copy(thresholds = t) else it })
+
+fun StoredState.setTotalThresholds(t: SocThresholds): StoredState = copy(totalThresholds = t)
 
 /** Moves a favorite up (negative) or down (positive) in display order, clamped to the list. */
 fun StoredState.moveFavorite(mac: String, delta: Int): StoredState {

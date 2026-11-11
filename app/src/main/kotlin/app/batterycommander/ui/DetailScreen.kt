@@ -25,6 +25,10 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,6 +39,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.batterycommander.data.BatteryRepository
 import app.batterycommander.data.RefreshStatus
 import app.batterycommander.domain.BatteryReading
+import app.batterycommander.domain.PowerFlow
+import app.batterycommander.domain.SocThresholds
+import app.batterycommander.domain.TimeEstimate
+import app.batterycommander.domain.basis
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -50,6 +58,7 @@ fun DetailScreen(repo: BatteryRepository, mac: String, onBack: () -> Unit) {
     val now = rememberNow()
     val scope = rememberCoroutineScope()
     val refreshing = b.status is RefreshStatus.Refreshing
+    var editingThresholds by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -87,6 +96,7 @@ fun DetailScreen(repo: BatteryRepository, mac: String, onBack: () -> Unit) {
                 item { Text("No data yet. Tap refresh to read this battery.") }
             } else {
                 item { Summary(r) }
+                item { Estimate(b.estimate, b.favorite.thresholds, now) { editingThresholds = true } }
                 item { Cells(r) }
                 item { Status(r) }
                 item { Lifetime(r, mac) }
@@ -101,6 +111,36 @@ fun DetailScreen(repo: BatteryRepository, mac: String, onBack: () -> Unit) {
                 }
             }
         }
+    }
+    if (editingThresholds) {
+        ThresholdsDialog(
+            title = "Thresholds for ${b.favorite.nickname}",
+            initial = b.favorite.thresholds,
+            onDismiss = { editingThresholds = false },
+            onSave = { repo.setThresholds(mac, it); editingThresholds = false },
+        )
+    }
+}
+
+@Composable
+private fun Estimate(e: TimeEstimate?, t: SocThresholds, now: Long, onEdit: () -> Unit) = Section("Time estimate") {
+    if (e == null || e.flow == PowerFlow.IDLE) {
+        Text("Idle: no estimate while no current is flowing.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+    } else {
+        EstimateLine(e, now)
+        Field("Average current", amps(e.rateMa))
+        Field("Rate", e.basis())
+        if (!e.confident) {
+            Text(
+                "Rough: " + if (e.spanMs == 0L) "not enough history yet." else "the load or charger changed recently.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(thresholdsLabel(t), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        TextButton(onClick = onEdit) { Text("Thresholds…") }
     }
 }
 

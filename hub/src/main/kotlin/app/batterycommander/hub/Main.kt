@@ -3,7 +3,14 @@ package app.batterycommander.hub
 import app.batterycommander.domain.Favorite
 import app.batterycommander.domain.MANUAL_REFRESH
 import app.batterycommander.domain.StoredState
+import app.batterycommander.domain.SocThresholds
+import app.batterycommander.domain.TimeEstimate
+import app.batterycommander.domain.describe
 import app.batterycommander.domain.pollIntervalLabel
+import app.batterycommander.domain.setFavoriteThresholds
+import app.batterycommander.domain.setGroupThresholds
+import app.batterycommander.domain.setTotalThresholds
+import app.batterycommander.domain.socThresholds
 import app.batterycommander.domain.withPollInterval
 import app.batterycommander.domain.formatAge
 import app.batterycommander.hub.bluez.BluezBle
@@ -23,6 +30,7 @@ import com.github.ajalt.clikt.parameters.arguments.multiple
 import com.github.ajalt.clikt.parameters.arguments.optional
 import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.option
+import com.github.ajalt.clikt.parameters.types.restrictTo
 import com.github.ajalt.clikt.parameters.types.int
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.embeddedServer
@@ -104,10 +112,10 @@ class Status : CliktCommand() {
                     it.stateOfChargePct, it.remainingMah / 1000.0, it.capacityMah / 1000.0,
                     it.energyRemainingMwh / 1e6, it.energyCapacityMwh / 1e6, it.powerMw / 1000.0,
                     if (it.isPartial) "  (${it.reportingCount}/${it.batteryCount} reporting)" else "",
-                ),
+                ) + estimateText(o.totalEstimate, now),
             )
         }
-        val sections = o.groups.map { "${it.group.name} (${it.group.wiring.name.lowercase()})" to it.members } +
+        val sections = o.groups.map { "${it.group.name} (${it.group.wiring.name.lowercase()})" + estimateText(it.estimate, now) to it.members } +
             listOf("Not in a group" to o.ungrouped)
         for ((title, macs) in sections) {
             if (macs.isEmpty()) continue
@@ -126,10 +134,64 @@ class Status : CliktCommand() {
                     PollStatus.State.REFRESHING -> "  [refreshing]"
                     PollStatus.State.IDLE -> ""
                 }
-                echo(String.format(Locale.US, "  %-20s %s%s", b.favorite.nickname.take(20), line, status))
+                echo(String.format(Locale.US, "  %-20s %s%s%s", b.favorite.nickname.take(20), line, estimateText(b.estimate, now), status))
             }
         }
     }
+}
+
+/** "  · Full in 3 h (rough)", or "" when idle. */
+private fun estimateText(e: TimeEstimate?, now: Long): String =
+    e?.describe(now)?.let { "  · $it" + if (e.confident) "" else " (rough)" }.orEmpty()
+
+class Thresholds : CliktCommand() {
+    private val target by argument(help = "A battery's MAC or nickname, a group name, or \"all\"")
+    private val dischargeTo by option("--discharge-to", help = "Discharge estimates count down to this % (0 = default)").int().restrictTo(0..100)
+    private val chargeTo by option("--charge-to", help = "Charge estimates count up to this % (100 = default)").int().restrictTo(0..100)
+    private val url by option(help = "Hub URL").default("http://127.0.0.1:$DEFAULT_PORT")
+
+    override fun help(context: com.github.ajalt.clikt.core.Context) =
+        "Show or set the levels time estimates count toward. For estimates only: nothing is sent to the battery. " +
+            "Options left out keep their current value."
+
+    override fun run() {
+        val store = StateStore()
+        val s = store.load()
+        val fav = s.favorites.firstOrNull { it.mac.equals(target, ignoreCase = true) }
+            ?: s.favorites.filter { it.nickname.equals(target, ignoreCase = true) }.singleOrNull()
+        val group = s.groups.filter { it.name.equals(target, ignoreCase = true) }.singleOrNull()
+        val isAll = target.equals("all", ignoreCase = true)
+        val (label, current, path) = when {
+            isAll -> Triple("All batteries", s.totalThresholds, "/api/thresholds")
+            fav != null -> Triple(fav.nickname, fav.thresholds, "/api/favorites/${fav.mac}/thresholds")
+            group != null -> Triple("Group ${group.name}", group.thresholds, "/api/groups/${group.id}/thresholds")
+            else -> throw CliktError("No single battery or group matches \"$target\" (use a MAC if nicknames repeat)")
+        }
+        if (dischargeTo == null && chargeTo == null) {
+            echo("$label: ${describe(current)}")
+            return
+        }
+        val t = try {
+            socThresholds(dischargeTo ?: current.low, chargeTo ?: current.high)
+        } catch (e: IllegalArgumentException) {
+            throw CliktError(e.message)
+        }
+        try {
+            put(url + path, """{"dischargeToPct":${t.dischargeToPct},"chargeToPct":${t.chargeToPct}}""")
+        } catch (e: HubUnreachable) {
+            // Hub not running: write it to disk; it applies on next start.
+            store.save(
+                when {
+                    isAll -> s.setTotalThresholds(t)
+                    fav != null -> s.setFavoriteThresholds(fav.mac, t)
+                    else -> s.setGroupThresholds(group!!.id, t)
+                },
+            )
+        }
+        echo("$label: ${describe(t)}")
+    }
+
+    private fun describe(t: SocThresholds) = "discharge to ${t.low}%, charge to ${t.high}%"
 }
 
 class Refresh : CliktCommand() {
@@ -195,7 +257,7 @@ class ImportPhone : CliktCommand(name = "import-phone") {
     private val adb by option(help = "Path to adb").default("adb")
 
     override fun help(context: com.github.ajalt.clikt.core.Context) =
-        "Copy favorites, nicknames, and groups from the Android app over USB (adb). Hub readings are kept."
+        "Copy favorites, nicknames, groups, and estimate thresholds from the Android app over USB (adb). Hub readings are kept."
 
     override fun run() {
         val proc = ProcessBuilder(adb, "exec-out", "run-as", "app.batterycommander", "cat", "files/favorites.json")
@@ -207,7 +269,12 @@ class ImportPhone : CliktCommand(name = "import-phone") {
         val phone = store.decode(text)
         val hub = store.load()
         val keep = phone.favorites.map { it.mac }.toSet()
-        store.save(hub.copy(favorites = phone.favorites, groups = phone.groups, readings = hub.readings.filterKeys { it in keep }))
+        store.save(
+            hub.copy(
+                favorites = phone.favorites, groups = phone.groups, totalThresholds = phone.totalThresholds,
+                readings = hub.readings.filterKeys { it in keep }, recent = hub.recent.filterKeys { it in keep },
+            ),
+        )
         echo("Imported ${phone.favorites.size} favorites and ${phone.groups.size} groups into ${HubPaths.stateFile}")
         echo("A running hub picks this up within 30 seconds.")
     }
@@ -290,4 +357,4 @@ private fun send(method: String, url: String, body: String) {
     if (res.statusCode() !in 200..299) throw CliktError("$method $url → ${res.statusCode()}: ${res.body()}")
 }
 
-fun main(args: Array<String>) = Hub().subcommands(Serve(), Status(), Refresh(), Interval(), Scan(), ImportPhone(), AddFavorite(), Probe()).main(args)
+fun main(args: Array<String>) = Hub().subcommands(Serve(), Status(), Refresh(), Interval(), Thresholds(), Scan(), ImportPhone(), AddFavorite(), Probe()).main(args)

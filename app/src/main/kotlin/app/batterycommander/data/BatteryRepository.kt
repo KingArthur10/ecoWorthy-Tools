@@ -16,6 +16,12 @@ import app.batterycommander.domain.deleteGroup
 import app.batterycommander.domain.moveFavorite
 import app.batterycommander.domain.removeFavorite
 import app.batterycommander.domain.renameFavorite
+import app.batterycommander.domain.SocThresholds
+import app.batterycommander.domain.TimeEstimate
+import app.batterycommander.domain.setFavoriteThresholds
+import app.batterycommander.domain.setGroupThresholds
+import app.batterycommander.domain.setTotalThresholds
+import app.batterycommander.domain.withReading
 import app.batterycommander.domain.summarize
 import app.batterycommander.domain.updateGroup
 import app.batterycommander.domain.withPollInterval
@@ -49,14 +55,21 @@ sealed interface RefreshStatus {
     data class Failed(val message: String, val atMs: Long) : RefreshStatus
 }
 
-data class BatteryUi(val favorite: Favorite, val reading: BatteryReading?, val status: RefreshStatus)
+data class BatteryUi(
+    val favorite: Favorite,
+    val reading: BatteryReading?,
+    val status: RefreshStatus,
+    val estimate: TimeEstimate? = null,
+)
 
-data class GroupUi(val group: BatteryGroup, val members: List<BatteryUi>, val stats: AggregateStats?)
+data class GroupUi(val group: BatteryGroup, val members: List<BatteryUi>, val stats: AggregateStats?, val estimate: TimeEstimate?)
 
 /** Everything the overview screen shows, in display order. */
 data class Overview(
     /** Totals across every favorite; null until at least one has a reading. */
     val total: AggregateStats?,
+    val totalEstimate: TimeEstimate?,
+    val totalThresholds: SocThresholds,
     val groups: List<GroupUi>,
     val ungrouped: List<BatteryUi>,
 )
@@ -76,7 +89,8 @@ class BatteryRepository(
     private val bleLock = Mutex()
 
     val batteries: StateFlow<List<BatteryUi>> = combine(state, statuses) { s, st ->
-        s.favorites.map { BatteryUi(it, s.readings[it.mac], st[it.mac] ?: RefreshStatus.Idle) }
+        val estimates = s.summarize().estimates
+        s.favorites.map { BatteryUi(it, s.readings[it.mac], st[it.mac] ?: RefreshStatus.Idle, estimates[it.mac]) }
     }.stateIn(scope, SharingStarted.Eagerly, emptyList())
 
     val groups: StateFlow<List<BatteryGroup>> = state.map { it.groups }.stateIn(scope, SharingStarted.Eagerly, emptyList())
@@ -86,10 +100,12 @@ class BatteryRepository(
         val summary = s.summarize()
         Overview(
             total = summary.total,
-            groups = summary.groups.map { g -> GroupUi(g.group, g.members.mapNotNull { byMac[it.mac] }, g.stats) },
+            totalEstimate = summary.totalEstimate,
+            totalThresholds = s.totalThresholds,
+            groups = summary.groups.map { g -> GroupUi(g.group, g.members.mapNotNull { byMac[it.mac] }, g.stats, g.estimate) },
             ungrouped = summary.ungrouped.mapNotNull { byMac[it.mac] },
         )
-    }.stateIn(scope, SharingStarted.Eagerly, Overview(null, emptyList(), emptyList()))
+    }.stateIn(scope, SharingStarted.Eagerly, Overview(null, null, SocThresholds(), emptyList(), emptyList()))
 
     private val _discovered = MutableStateFlow<List<ScanHit>>(emptyList())
 
@@ -143,6 +159,14 @@ class BatteryRepository(
     /** Puts a battery in a group, or takes it out with null. A battery is in at most one group. */
     fun assignGroup(mac: String, groupId: String?) = mutate { it.assignGroup(mac, groupId) }
 
+    // --- Estimate thresholds (validated by core socThresholds) -----------------------------
+
+    fun setThresholds(mac: String, t: SocThresholds) = mutate { it.setFavoriteThresholds(mac, t) }
+
+    fun setGroupThresholds(id: String, t: SocThresholds) = mutate { it.setGroupThresholds(id, t) }
+
+    fun setTotalThresholds(t: SocThresholds) = mutate { it.setTotalThresholds(t) }
+
     // --- Search ----------------------------------------------------------------------------
 
     fun search(duration: Duration = 15.seconds) {
@@ -170,7 +194,7 @@ class BatteryRepository(
     suspend fun refresh(mac: String) {
         statuses.update { it + (mac to RefreshStatus.Refreshing) }
         val result = runCatching { read(mac) }
-        result.onSuccess { reading -> mutate { it.copy(readings = it.readings + (mac to reading)) } }
+        result.onSuccess { reading -> mutate { it.withReading(mac, reading) } }
         statuses.update {
             it + (mac to (result.exceptionOrNull()?.let { e -> RefreshStatus.Failed(e.message ?: e.toString(), clock()) } ?: RefreshStatus.Idle))
         }

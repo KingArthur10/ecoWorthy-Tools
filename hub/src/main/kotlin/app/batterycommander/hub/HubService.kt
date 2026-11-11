@@ -11,6 +11,11 @@ import app.batterycommander.domain.moveFavorite
 import app.batterycommander.domain.normalizeMac
 import app.batterycommander.domain.removeFavorite
 import app.batterycommander.domain.renameFavorite
+import app.batterycommander.domain.SocThresholds
+import app.batterycommander.domain.setFavoriteThresholds
+import app.batterycommander.domain.setGroupThresholds
+import app.batterycommander.domain.setTotalThresholds
+import app.batterycommander.domain.withReading
 import app.batterycommander.domain.updateGroup
 import app.batterycommander.domain.withPollInterval
 import app.batterycommander.domain.StoredState
@@ -155,6 +160,12 @@ class HubService(
 
     fun deleteGroup(id: String) = mutate { requireGroup(it, id).deleteGroup(id) }
 
+    fun setFavoriteThresholds(mac: String, t: SocThresholds) = mutate { requireFavorite(it, mac).setFavoriteThresholds(mac, t) }
+
+    fun setGroupThresholds(id: String, t: SocThresholds) = mutate { requireGroup(it, id).setGroupThresholds(id, t) }
+
+    fun setTotalThresholds(t: SocThresholds) = mutate { it.setTotalThresholds(t) }
+
     fun isFavorite(mac: String) = _state.value.favorites.any { it.mac == mac }
 
     private fun requireFavorite(s: StoredState, mac: String): StoredState {
@@ -172,7 +183,7 @@ class HubService(
         val result = radioLock.withLock { runCatching { reader.read(mac) } }
         result.onSuccess { r ->
             history.record(mac, r)
-            mutate { it.copy(readings = it.readings + (mac to r)) }
+            mutate { it.withReading(mac, r) }
             _statuses.update { it + (mac to PollStatus(PollStatus.State.IDLE, atMs = clock())) }
         }.onFailure { e ->
             _statuses.update { it + (mac to PollStatus(PollStatus.State.FAILED, e.message ?: e.toString(), clock())) }
@@ -205,14 +216,18 @@ class HubService(
         }
     }
 
-    /** Takes favorites and groups from the file if it was edited externally; keeps our newer readings. */
+    /** Takes favorites and groups from the file if it was edited externally; keeps our newer readings and samples. */
     fun reloadIfChangedExternally() {
         if (!store.changedExternally()) return
         val fromDisk = store.load()
+        val keep = fromDisk.favorites.map { it.mac }.toSet()
         mutate { current ->
-            fromDisk.copy(readings = fromDisk.readings.filterKeys { mac -> fromDisk.favorites.any { it.mac == mac } } +
-                current.readings.filterKeys { mac -> fromDisk.favorites.any { it.mac == mac } }
-                    .filter { (mac, r) -> r.timestampMs >= (fromDisk.readings[mac]?.timestampMs ?: 0) })
+            fromDisk.copy(
+                readings = fromDisk.readings.filterKeys { it in keep } +
+                    current.readings.filterKeys { it in keep }
+                        .filter { (mac, r) -> r.timestampMs >= (fromDisk.readings[mac]?.timestampMs ?: 0) },
+                recent = current.recent.filterKeys { it in keep },
+            )
         }
     }
 

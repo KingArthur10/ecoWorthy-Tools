@@ -31,7 +31,8 @@
 
 ## Phase 4: Banks, alarms, and history
 - [ ] Bank editor, diagram, and combined stats
-- [ ] Runtime and charge-time estimates
+- [x] Runtime and charge-time estimates (2026-11-11): per battery, group, and all batteries, to user thresholds, from a 30 min rolling average
+- [ ] Taper correction for estimates near full
 - [ ] Alarm rules and notifications, history charts, CSV export
 
 ## Phase 5: Extras

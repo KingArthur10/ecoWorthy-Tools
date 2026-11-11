@@ -7,7 +7,11 @@ Draft. The fields aren't final.
 - **CachedState:** battery id, last reading, last-seen time, last signal strength, signal source (phone or hub), busy or stale flags
 - **Reading:** battery id, timestamp, voltage, current, SOC, remaining Ah, cell voltages[], temperatures[],
   MOSFET state, balancing, protection flags, cycles
-- **BatteryGroup** (implemented): id, name, wiring (PARALLEL | SERIES | NONE). A battery's `groupId` points to at most one group
+- **BatteryGroup** (implemented): id, name, wiring (PARALLEL | SERIES | NONE), thresholds. A battery's `groupId` points to at most one group
+- **SocThresholds** (implemented): discharge-to %, charge-to % (null = 0% / 100%). On each favorite, each group, and
+  `StoredState.totalThresholds`. Estimates only; see ADR 0004
+- **RateSample** (implemented): timestamp, remaining mAh, current. `StoredState.recent[mac]` keeps the last 3 h (at most 200)
+  for rolling rate estimates
 - **Bank** (future, for nesting): id, name, root node. **BankNode** = {series | parallel, children: BankNode | Battery}
 - **Profile:** id, name, max SOC, resume SOC, min SOC, reserve action, warning delay
 - **ProfileAssignment:** battery or bank, profile, optional revert-to profile and revert time
