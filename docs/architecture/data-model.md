@@ -1,11 +1,17 @@
 # Data model
 
-Draft entities. Fields are TBD.
+Draft. The fields aren't final.
 
-- **Battery:** id, nickname, MAC, BLE name, protocol variant, nominal capacity, cell count, icon, notes, sort order
-- **Group:** id, name, member batteries
-- **Reading:** battery id, timestamp, voltage, current, SOC, remaining Ah, cell voltages, temperatures, MOSFET state, protection flags
-- **AlarmRule:** battery or group, metric, comparison, threshold, hysteresis, enabled, severity
+- **Battery** (a favorite): id, nickname, MAC, BLE name, protocol variant, capacity (Ah), nominal voltage,
+  cell count, color or icon, notes, sort order, controller node (hub or phone)
+- **CachedState:** battery id, last reading, last-seen time, last signal strength, signal source (phone or hub), busy or stale flags
+- **Reading:** battery id, timestamp, voltage, current, SOC, remaining Ah, cell voltages[], temperatures[],
+  MOSFET state, balancing, protection flags, cycles
+- **Bank:** id, name, root node. **BankNode** = {series | parallel, children: BankNode | Battery}
+- **Profile:** id, name, max SOC, resume SOC, min SOC, reserve action, warning delay
+- **ProfileAssignment:** battery or bank, profile, optional revert-to profile and revert time
+- **AlarmRule:** battery or bank, metric, comparison, threshold, hysteresis, repeat limit, action (notify | cut discharge | cut charge), enabled
 - **AlarmEvent:** rule, timestamp, value, acknowledged
-- **ParameterSnapshot:** battery, timestamp, raw parameter set (a backup taken before any write)
-- **CommandLog:** battery, timestamp, command, result
+- **ParameterSnapshot:** battery, timestamp, raw parameters (taken before any write)
+- **CommandLog:** battery or bank, timestamp, command, source (user | profile | alarm), node, result
+- **HubPairing:** hub id, address, pairing secret, last sync time

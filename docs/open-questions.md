@@ -1,11 +1,14 @@
 # Open questions
 
-| # | Question | Owner | Status |
-|---|---|---|---|
-| 1 | Which battery models and BLE variants do you own? (fill in the battery inventory) | User | Open |
-| 2 | What exactly does "full command and control" include beyond what Overkill Solar offers? | User | Open |
-| 3 | Should alarms trigger automatic actions, or only notify? | User | Open |
-| 4 | Which optional features use the internet, if any (weather or solar forecasts, firmware info)? | User | Open |
-| 5 | Should the app manage other devices (chargers, inverters, shunts)? | User | Open |
-| 6 | Tech stack (ADR 0001) | Both | Open |
-| 7 | Distribution: sideloaded APK, F-Droid, or Play Store? Open source? | User | Open |
+| # | Question | Status |
+|---|---|---|
+| 1 | Which battery models and BLE variants do you own? (battery inventory) | Open |
+| 2 | ~~What does "full command and control" mean?~~ Answered 2026-11-10: charge toggle, max-SOC limit, min-SOC reserve, charge rate. See the control spec | Answered |
+| 3 | Should alarms take actions automatically? Current proposal: profile limits act automatically; cutting discharge at the reserve is opt-in | Proposed |
+| 4 | Charge-rate control isn't possible through a standard BMS. Which chargers, solar controllers, or DC-DC converters do you use? Are any Bluetooth-controllable? | Open |
+| 5 | Tech stack (ADR 0001): Kotlin Multiplatform is recommended | Open |
+| 6 | At home, should the phone always go through the hub (ADR 0003)? | Proposed |
+| 7 | Default polling interval: 10 min proposed, adaptive near limits | Proposed |
+| 8 | During an outage, does the LAN stay up (is the router on battery)? If not, the phone falls back to direct mode | Open |
+| 9 | Distribution: sideloaded APK, F-Droid, or Play Store? Open source? | Open |
+| 10 | Which internet-only extras, if any (weather or solar forecasts)? | Open |

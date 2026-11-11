@@ -1,6 +1,6 @@
 # History and logging
 
-**Requirements:** FR-040 to FR-042
+**Requirements:** FR-070 to FR-073
 **Status:** Draft
 
 ## Summary

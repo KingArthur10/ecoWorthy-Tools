@@ -1,6 +1,6 @@
 # Ecoworthy Battery Commander (working title)
 
-An offline-first Android app for monitoring and controlling multiple ECO-WORTHY (and compatible)
+An offline-first Android app and Linux hub for monitoring and controlling multiple ECO-WORTHY (and compatible)
 LiFePO4 batteries over Bluetooth. No accounts, no cloud. It works with zero connectivity
 during power outages and while camping.
 

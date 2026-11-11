@@ -1,6 +1,6 @@
 # Alarms and notifications
 
-**Requirements:** FR-020 to FR-022
+**Requirements:** FR-060 to FR-064
 **Status:** Draft
 
 ## Summary
