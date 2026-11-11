@@ -37,6 +37,7 @@ const val LFP_NOMINAL_CELL_MV = 3200
  *
  * Only members with a reading count; [reportingCount] < [batteryCount] means the totals are partial.
  */
+@Serializable
 data class AggregateStats(
     val wiring: Wiring,
     val batteryCount: Int,

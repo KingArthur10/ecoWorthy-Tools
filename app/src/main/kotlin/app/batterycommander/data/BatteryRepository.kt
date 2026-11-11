@@ -7,8 +7,9 @@ import app.batterycommander.domain.AggregateStats
 import app.batterycommander.domain.BatteryGroup
 import app.batterycommander.domain.BatteryReading
 import app.batterycommander.domain.Favorite
+import app.batterycommander.domain.StoredState
 import app.batterycommander.domain.Wiring
-import app.batterycommander.domain.aggregate
+import app.batterycommander.domain.summarize
 import app.batterycommander.domain.toReading
 import app.batterycommander.protocol.jbd.JbdClient
 import app.batterycommander.protocol.jbd.JbdGatt
@@ -71,16 +72,13 @@ class BatteryRepository(
 
     val groups: StateFlow<List<BatteryGroup>> = state.map { it.groups }.stateIn(scope, SharingStarted.Eagerly, emptyList())
 
-    val overview: StateFlow<Overview> = combine(batteries, groups) { all, groups ->
-        val known = groups.map { it.id }.toSet()
+    val overview: StateFlow<Overview> = combine(state, batteries) { s, all ->
+        val byMac = all.associateBy { it.favorite.mac }
+        val summary = s.summarize()
         Overview(
-            // "All batteries" aren't one bank, so only energy and Ah totals are meaningful.
-            total = aggregate(all.map { it.reading }, Wiring.NONE),
-            groups = groups.map { g ->
-                val members = all.filter { it.favorite.groupId == g.id }
-                GroupUi(g, members, aggregate(members.map { it.reading }, g.wiring))
-            },
-            ungrouped = all.filter { it.favorite.groupId == null || it.favorite.groupId !in known },
+            total = summary.total,
+            groups = summary.groups.map { g -> GroupUi(g.group, g.members.mapNotNull { byMac[it.mac] }, g.stats) },
+            ungrouped = summary.ungrouped.mapNotNull { byMac[it.mac] },
         )
     }.stateIn(scope, SharingStarted.Eagerly, Overview(null, emptyList(), emptyList()))
 

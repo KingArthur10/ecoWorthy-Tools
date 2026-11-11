@@ -1,20 +1,8 @@
 package app.batterycommander.data
 
-import app.batterycommander.domain.BatteryGroup
-import app.batterycommander.domain.BatteryReading
-import app.batterycommander.domain.Favorite
-import kotlinx.serialization.Serializable
+import app.batterycommander.domain.StoredState
 import kotlinx.serialization.json.Json
 import java.io.File
-
-/** Everything persisted for now: favorites (in display order), each one's last reading, and groups. */
-@Serializable
-data class StoredState(
-    val version: Int = 1,
-    val favorites: List<Favorite> = emptyList(),
-    val readings: Map<String, BatteryReading> = emptyMap(),
-    val groups: List<BatteryGroup> = emptyList(),
-)
 
 /**
  * JSON file in app-private storage. Small enough to rewrite whole on each change; history
