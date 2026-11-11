@@ -23,7 +23,9 @@ Priority: **M** = must (MVP), **S** = should, **C** = could.
 | FR-012 | The list scrolls when favorites outnumber the screen | M |
 | FR-013 | A Search button lists batteries that aren't favorites, below the favorites | M |
 | FR-014 | A "Refresh all" action starts a polling cycle right away | M |
-| FR-015 | A bank summary row with combined SOC and time estimate | S |
+| FR-015 | A bank summary row with combined SOC and time estimate (SOC, Ah, and Wh done; time estimate still to do) | S |
+| FR-017 | Each favorite card shows remaining and total capacity (Ah and Wh) | M |
+| FR-018 | An "All batteries" total card: combined SOC, Ah, Wh, and power, with partial data flagged | M |
 | FR-016 | Show the signal strength's source (phone or hub) | S |
 
 ### Battery detail ([spec](features/battery-detail.md))
@@ -59,7 +61,7 @@ Priority: **M** = must (MVP), **S** = should, **C** = could.
 ### Banks and estimates ([spec](features/bank-topology-and-estimates.md))
 | ID | Requirement | Pri |
 |---|---|---|
-| FR-050 | Define banks by hand as series and parallel groups | S |
+| FR-050 | Define banks by hand as series and parallel groups (flat groups done; nesting such as 2S2P still to do) | S |
 | FR-051 | A visual diagram of each bank | S |
 | FR-052 | Combined voltage, capacity, SOC, and energy for each bank | S |
 | FR-053 | Time-to-reserve and time-to-max estimates from the average power | S |
