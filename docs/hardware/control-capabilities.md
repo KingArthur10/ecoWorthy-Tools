@@ -14,7 +14,7 @@ Researched 2026-11-10. **Verify every row against the real batteries** before re
 ## Max charge speed
 Drop-in LiFePO4 BMSs switch current on or off. They don't regulate it. The **charger** sets the
 current. Ways to control the charge rate:
-1. A Bluetooth-controllable charger, solar controller, or DC-DC converter (for example Victron or Renogy). This is possible future scope.
+1. A Bluetooth-controllable charger, solar controller, or DC-DC converter (for example Victron or Renogy). **Not applicable: the user has generic chargers.**
 2. Set it on the charger by hand.
 3. A JBD board with the current-limit module, if your batteries have one (to verify).
 

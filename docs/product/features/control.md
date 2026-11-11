@@ -15,7 +15,7 @@ the rest are missing.
 | Discharge on/off | Each battery or bank | BMS discharge MOSFET | Cuts power to loads; needs a strong confirmation |
 | Charge limit (max SOC) | Each battery or bank | Enforced by the app (see the profiles spec) | |
 | Discharge reserve (min SOC) | Each battery or bank | Enforced by the app | |
-| Max charge current | n/a | **Not possible with standard drop-in BMSs.** The charger sets the current | See capabilities |
+| Max charge current | n/a | **Out of scope.** The BMS can't regulate current, and the user's chargers are generic | FR-036 is deprecated |
 | BMS parameters (read) | Each battery | JBD EEPROM registers | Shown in an "Advanced" section |
 | BMS parameters (write) | Each battery | JBD EEPROM registers | Expert mode only, with a backup first. See [safety](../../safety.md) |
 | Clear alarms, reset capacity | Each battery | BW02 (per the official app manual) | Needs a protocol capture |

@@ -11,8 +11,11 @@
    - **Direct mode:** no hub (for example, camping). The phone does its own Bluetooth polling, with
      its own cache, profile enforcement, and alarms.
 
-Switching between modes is automatic and visible on screen. The hub doesn't need the internet, only the LAN
-(during an outage, the router or a travel access point must have power).
+Switching between modes is automatic and visible on screen. The hub never needs the internet, only a local
+IP link: home Wi-Fi, a phone hotspot (which works with no cellular service), or the hub's own Wi-Fi access point (see ADR 0003).
+
+The Linux PC is also a **command station** in its own right: its web UI and CLI offer full monitoring and
+control (FR-082, FR-085).
 
 ## Why hub mode matters
 Each battery accepts **one Bluetooth connection at a time**. If the hub and the phone both

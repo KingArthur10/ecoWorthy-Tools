@@ -1,10 +1,12 @@
 # Roadmap
 
 ## Phase 0: Spec and hardware discovery
-- [ ] Fill in the battery inventory (models and BLE names)
-- [ ] Capture BLE traffic from the official app for each variant: reads, MOSFET toggles, and settings (HCI snoop log)
+- [x] Scan for the batteries: five JBD units found
+- [ ] Read-only probe of each battery: capacity, cells, and parameters, to fill in the inventory
+- [ ] Spike: BlueZ BLE from the JVM (connect, read, and disconnect cleanly)
+- [ ] Optional: capture the official app's traffic for a MOSFET toggle, to confirm 0xE1 on these boards
 - [ ] Confirm the control capabilities table against real hardware
-- [ ] Decide ADR 0001 (tech stack)
+- [x] Decide ADR 0001 (Kotlin Multiplatform)
 
 ## Phase 1: Read-only core
 - [ ] Shared protocol drivers (reads), tested against captured frames

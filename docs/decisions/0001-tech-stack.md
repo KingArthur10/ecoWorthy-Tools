@@ -1,28 +1,26 @@
-# 0001: Tech stack
+# 0001: Tech stack: Kotlin Multiplatform
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-11-10
 
 ## Context
-There are two targets: an Android app, and a Linux hub daemon on a small-form-factor PC. Both need reliable BLE
-and the same protocol drivers. Getting the protocol right is the riskiest part, so the two
-targets shouldn't drift apart.
-
-## Options
-A. **Kotlin Multiplatform**: a shared Kotlin core (protocol drivers, domain, estimates) used by
-   the Android app (Compose) and a JVM daemon on Linux. Linux BLE goes through BlueZ D-Bus
-   (for example, the `blessed-bluez` library or a thin D-Bus binding). One language and one set of drivers.
-B. **Python hub plus a native Kotlin app**: the hub uses `bleak` and `aiobmsble`, which already decodes every
-   ECO-WORTHY BLE variant. The Android app has its own Kotlin drivers. That's the fastest hub, but
-   two driver implementations. Keep them in step with shared test fixtures (captured frames).
-C. **Rust core** (btleplug) bound into Android through UniFFI and used directly on Linux. Strong shared core,
-   but the most build complexity and the weakest Android BLE story.
-
-## Recommendation
-**A (Kotlin Multiplatform)**, using aiobmsble and esphome-jbd-bms as *references* (and their
-captured frames as test fixtures). A single codebase for the control logic matters most,
-because both nodes can send commands that change state.
-Fallback if Linux BLE from the JVM proves painful: B.
+There are two targets: an Android app, and a Linux hub daemon on a small-form-factor PC. Both need reliable BLE and identical
+protocol drivers, because both can send commands that change a battery's state.
 
 ## Decision
-TBD (needs the user's input)
+**Kotlin Multiplatform**: a shared Kotlin core (JBD protocol driver, domain, profiles, estimates,
+sync) used by:
+- **Android:** Jetpack Compose UI, Android BLE APIs, and a foreground service
+- **Linux hub:** a JVM daemon using BlueZ over D-Bus, with a Ktor server for the LAN API and web UI
+
+aiobmsble and esphome-jbd-bms serve as protocol *references*, and frames captured from the user's
+batteries serve as shared test fixtures.
+
+## Alternatives considered
+- Python hub plus a Kotlin app: a faster hub, but two driver implementations that can drift apart.
+- A Rust core: the most build complexity, and a weaker Android BLE story.
+
+## Consequences
+- The Linux BLE layer is the main risk. Prototype it early (a spike: connect, read, and disconnect cleanly on
+  BlueZ from the JVM). If it proves painful, fall back to a small native BlueZ helper behind the
+  same interface.

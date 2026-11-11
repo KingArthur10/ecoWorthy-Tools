@@ -4,9 +4,9 @@ ECO-WORTHY has shipped several Bluetooth implementations. Identify them by the a
 
 | Advertised name | Hardware | Protocol doc | Support plan |
 |---|---|---|---|
-| `DP04S…`, `JBD-…` | JBD / Xiaoxiang BMS | [protocols/jbd.md](protocols/jbd.md) | Yes |
-| `ECO-WORTHY…` | BW02 BT/WiFi module | [protocols/ecoworthy-bw02.md](protocols/ecoworthy-bw02.md) | Yes |
-| `T-12…`, `T-24…` | Redodo-type BMS | [protocols/redodo.md](protocols/redodo.md) | Yes |
+| `DP04S…`, `JBD-…` | JBD / Xiaoxiang BMS | [protocols/jbd.md](protocols/jbd.md) | **v1. All of the user's batteries** |
+| `ECO-WORTHY…` | BW02 BT/WiFi module | [protocols/ecoworthy-bw02.md](protocols/ecoworthy-bw02.md) | Later (not owned) |
+| `T-12…`, `T-24…` | Redodo-type BMS | [protocols/redodo.md](protocols/redodo.md) | Later (not owned) |
 | `ECO…` (older) | Classic Bluetooth (not BLE) | [protocols/classic-bt.md](protocols/classic-bt.md) | Investigate |
 
 Source: the supported-devices list in [BMS_BLE-HA](https://github.com/patman15/BMS_BLE-HA).

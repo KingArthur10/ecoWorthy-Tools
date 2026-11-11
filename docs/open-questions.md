@@ -2,13 +2,15 @@
 
 | # | Question | Status |
 |---|---|---|
-| 1 | Which battery models and BLE variants do you own? (battery inventory) | Open |
-| 2 | ~~What does "full command and control" mean?~~ Answered 2026-11-10: charge toggle, max-SOC limit, min-SOC reserve, charge rate. See the control spec | Answered |
-| 3 | Should alarms take actions automatically? Current proposal: profile limits act automatically; cutting discharge at the reserve is opt-in | Proposed |
-| 4 | Charge-rate control isn't possible through a standard BMS. Which chargers, solar controllers, or DC-DC converters do you use? Are any Bluetooth-controllable? | Open |
-| 5 | Tech stack (ADR 0001): Kotlin Multiplatform is recommended | Open |
-| 6 | At home, should the phone always go through the hub (ADR 0003)? | Proposed |
+| 1 | ~~Which batteries?~~ Five JBD batteries found (4× `DP04S007L4S100A`, 1× `…120A`). See the inventory | Answered 2026-11-10 |
+| 1a | What is `DL105_56ZK5ENF` (10:5A:95:2D:2E:91)? Is it battery-related? | Open |
+| 1b | Capacity (Ah) of each battery, and which physical battery is which MAC (needs a read-only *Identify*) | Open |
+| 2 | ~~What does "full command and control" mean?~~ Charge toggle, max-SOC limit, min-SOC reserve | Answered 2026-11-10 |
+| 3 | Should alarms take actions automatically? Proposal: profile limits act automatically; cutting discharge at the reserve is opt-in | Proposed |
+| 4 | ~~Charge-rate control~~. Generic chargers, so it's out of scope | Answered 2026-11-10 |
+| 5 | ~~Tech stack~~. Kotlin Multiplatform (ADR 0001) | Answered 2026-11-10 |
+| 6 | Hub mode at home, and when camping with the PC (ADR 0003). Which local link do you prefer: a phone hotspot or a hub access point? | Open |
 | 7 | Default polling interval: 10 min proposed, adaptive near limits | Proposed |
-| 8 | During an outage, does the LAN stay up (is the router on battery)? If not, the phone falls back to direct mode | Open |
+| 8 | What powers the Linux PC when camping (one of these batteries, through an inverter or DC)? It affects the power budget | Open |
 | 9 | Distribution: sideloaded APK, F-Droid, or Play Store? Open source? | Open |
-| 10 | Which internet-only extras, if any (weather or solar forecasts)? | Open |
+| 10 | Which internet-only extras, if any? | Open |

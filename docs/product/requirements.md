@@ -44,7 +44,7 @@ Priority: **M** = must (MVP), **S** = should, **C** = could.
 | FR-033 | Apply MOSFET actions to every member of a series bank together | M |
 | FR-034 | Read BMS parameters | S |
 | FR-035 | Write BMS parameters (expert mode, backup first) | C |
-| FR-036 | Control the charge current through a Bluetooth-controllable charger | C (future) |
+| FR-036 | ~~Control the charge current through a Bluetooth-controllable charger~~. **Deprecated 2026-11-10:** the user's chargers are generic | n/a |
 
 ### Charge limits and profiles ([spec](features/charge-limits-and-profiles.md))
 | ID | Requirement | Pri |
@@ -88,9 +88,11 @@ Priority: **M** = must (MVP), **S** = should, **C** = could.
 |---|---|---|
 | FR-080 | An Android app (works in hub mode and direct mode) | M |
 | FR-081 | A Linux hub daemon that polls, enforces profiles, and keeps history | M |
-| FR-082 | The hub serves a LAN API for the phone, and a basic web UI | S |
+| FR-082 | The hub serves a LAN API for the phone, plus a web UI with **full monitoring and control** (the Linux PC is a command station at home) | M |
 | FR-083 | Switch automatically between hub mode and direct mode | S |
 | FR-084 | Settings sync between the phone and the hub | S |
+| FR-085 | A hub CLI for status and commands (scriptable) | S |
+| FR-086 | The phone can reach the hub with **no internet**, through a local link (a phone hotspot or a hub access point) | S |
 
 ## Non-functional
 | ID | Requirement |
