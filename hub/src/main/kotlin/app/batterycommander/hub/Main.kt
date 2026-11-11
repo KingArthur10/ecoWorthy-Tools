@@ -10,6 +10,8 @@ import app.batterycommander.domain.pollIntervalLabel
 import app.batterycommander.domain.setFavoriteThresholds
 import app.batterycommander.domain.setGroupThresholds
 import app.batterycommander.domain.setTotalThresholds
+import app.batterycommander.domain.RESUME_GAP_PCT
+import app.batterycommander.domain.setChargeLimit
 import app.batterycommander.domain.socThresholds
 import app.batterycommander.domain.withPollInterval
 import app.batterycommander.domain.formatAge
@@ -66,7 +68,7 @@ class Serve : CliktCommand() {
         val store = StateStore()
         val history = HistoryDb()
         val ble = BluezBle(adapter)
-        val service = HubService(store, history, BluezReader(ble), BluezScanner(ble))
+        val service = HubService(store, history, BluezReader(ble), BluezScanner(ble), BluezController(ble))
         val jobs = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val poller = jobs.launch { service.runPoller() }
         val allowedHosts = LOOPBACK_HOSTS + host
@@ -170,7 +172,7 @@ class Thresholds : CliktCommand() {
             else -> throw CliktError("No single battery or group matches \"$target\" (use a MAC if nicknames repeat)")
         }
         if (dischargeTo == null && chargeTo == null) {
-            echo("$label: ${describe(current)}")
+            echo("$label: ${describe(current, fav?.chargeLimit == true)}")
             return
         }
         val t = try {
@@ -190,10 +192,11 @@ class Thresholds : CliktCommand() {
                 },
             )
         }
-        echo("$label: ${describe(t)}")
+        echo("$label: ${describe(t, fav?.chargeLimit == true)}")
     }
 
-    private fun describe(t: SocThresholds) = "discharge to ${t.low}%, charge to ${t.high}%"
+    private fun describe(t: SocThresholds, limited: Boolean) = "discharge to ${t.low}%, charge to ${t.high}%" +
+        if (limited) " (charge limit on: the hub enforces it)" else ""
 }
 
 class Refresh : CliktCommand() {
@@ -292,6 +295,43 @@ class Charge : CliktCommand() {
     }
 }
 
+class ChargeLimit : CliktCommand(name = "charge-limit") {
+    private val target by argument(help = "A favorite's MAC or nickname")
+    private val state by argument(help = "on or off").convert {
+        when (it.lowercase()) {
+            "on" -> true
+            "off" -> false
+            else -> fail("Expected on or off, got: $it")
+        }
+    }
+
+    override fun help(context: com.github.ajalt.clikt.core.Context) =
+        "Make the hub enforce a battery's charge-to threshold: it turns the charge switch off at that level and back on " +
+            "$RESUME_GAP_PCT% below it. Turning the limit off resumes charging if the hub had stopped it. " +
+            "Set the level with `battery-hub thresholds <battery> --charge-to N`."
+
+    override fun run() {
+        val store = StateStore()
+        val s = store.load()
+        val fav = s.favorites.firstOrNull { it.mac.equals(target, ignoreCase = true) }
+            ?: s.favorites.filter { it.nickname.equals(target, ignoreCase = true) }.singleOrNull()
+            ?: throw CliktError("No single favorite matches \"$target\" (use its MAC if nicknames repeat)")
+        try {
+            store.save(s.setChargeLimit(fav.mac, state))
+        } catch (e: IllegalArgumentException) {
+            throw CliktError(e.message)
+        }
+        val high = fav.thresholds.high
+        echo(
+            if (!state) "${fav.nickname}: charge limit off. The hub resumes charging if it had stopped it."
+            else if (high == 100) "${fav.nickname}: charge limit on, but its charge-to threshold is 100%, so it does nothing. " +
+                "Set one with: battery-hub thresholds \"${fav.nickname}\" --charge-to 80"
+            else "${fav.nickname}: charge limit on. Charging stops at $high% and resumes at ${high - RESUME_GAP_PCT}%.",
+        )
+        echo("A running hub applies it within about a minute.")
+    }
+}
+
 class CommandLog : CliktCommand(name = "log") {
     private val limit by option(help = "How many").int().default(20)
 
@@ -352,9 +392,11 @@ class ImportPhone : CliktCommand(name = "import-phone") {
         val phone = store.decode(text)
         val hub = store.load()
         val keep = phone.favorites.map { it.mac }.toSet()
+        // Charge limits are enforced by the hub, so the hub's on/off setting wins over the phone's.
+        val limited = hub.favorites.filter { it.chargeLimit }.map { it.mac }.toSet()
         store.save(
             hub.copy(
-                favorites = phone.favorites, groups = phone.groups, totalThresholds = phone.totalThresholds,
+                favorites = phone.favorites.map { it.copy(chargeLimit = it.mac in limited) }, groups = phone.groups, totalThresholds = phone.totalThresholds,
                 readings = hub.readings.filterKeys { it in keep }, recent = hub.recent.filterKeys { it in keep },
             ),
         )
@@ -440,4 +482,4 @@ private fun send(method: String, url: String, body: String) {
     if (res.statusCode() !in 200..299) throw CliktError("$method $url → ${res.statusCode()}: ${res.body()}")
 }
 
-fun main(args: Array<String>) = Hub().subcommands(Serve(), Status(), Refresh(), Interval(), Thresholds(), Charge(), CommandLog(), Scan(), ImportPhone(), AddFavorite(), Probe()).main(args)
+fun main(args: Array<String>) = Hub().subcommands(Serve(), Status(), Refresh(), Interval(), Thresholds(), Charge(), ChargeLimit(), CommandLog(), Scan(), ImportPhone(), AddFavorite(), Probe()).main(args)

@@ -104,17 +104,26 @@ function aggregateBody(s, now, est) {
     <div class="small ${partial ? "error" : "muted"}">${count} · ${partial ? `only ${s.reportingCount} have data · ` : ""}oldest ${age(now, s.oldestReadingMs)}</div>`;
 }
 
+// The BMS flags a charge switch turned off over Bluetooth as a "protection"; it isn't a fault.
+const LOCK = "MOSFET_SOFTWARE_LOCK";
+const faults = (r) => r.protections.filter((p) => p !== LOCK);
+const limitPct = (f) => (f.chargeLimit ? f.thresholds?.chargeToPct ?? 100 : null);
+const RESUME_GAP = 5; // keep in sync with core RESUME_GAP_PCT
+
 function statusLine(b, now) {
   const parts = [];
   const r = b.reading;
+  const limit = limitPct(b.favorite);
   if (r) {
-    parts.push(flow(r));
-    if (r.protections.length) parts.push("⚠ " + r.protections.map(label).join(", "));
+    const held = !r.chargeFetOn && r.protections.includes(LOCK);
+    parts.push(held && limit != null ? `Held at ${limit}% limit` : held ? "Charge switched off over Bluetooth" : flow(r));
+    if (faults(r).length) parts.push("⚠ " + faults(r).map(label).join(", "));
     parts.push(age(now, r.timestampMs));
   }
+  if (limit != null && !(r && !r.chargeFetOn)) parts.push(`limit ${limit}%`);
   if (b.status.state === "REFRESHING") parts.push("refreshing…");
   if (b.status.state === "FAILED") parts.push("last try failed");
-  const warn = b.status.state === "FAILED" || (r && r.protections.length);
+  const warn = b.status.state === "FAILED" || (r && faults(r).length);
   return `<div class="small ${warn ? "error" : "muted"}">${esc(parts.join(" · "))}</div>`;
 }
 
@@ -189,6 +198,16 @@ function estimateSection(e, t, now) {
     ${body}<div class="small muted">${esc(thresholdsLabel(t))}</div></section>`;
 }
 
+function chargeLimitSection(f) {
+  const limit = limitPct(f);
+  const text = limit == null
+    ? `Off. The charge threshold is for estimates only. To enforce it: <code>battery-hub charge-limit "${esc(f.nickname)}" on</code>`
+    : limit === 100
+      ? "On, but the charge threshold is 100%, so the hub never stops charging."
+      : `On. The hub turns the charge switch off at ${limit}% and back on at ${limit - RESUME_GAP}%. Loads keep power. Every switch is logged (<code>battery-hub log</code>).`;
+  return `<section class="card"><strong>Charge limit</strong><p class="small">${text}</p></section>`;
+}
+
 let historyCache = { mac: null, at: 0, points: [] };
 
 async function loadHistory(mac) {
@@ -219,6 +238,7 @@ async function renderDetail() {
         ${r.temperaturesDeciC.map((t, i) => field(r.temperaturesDeciC.length === 1 ? "Temperature" : `Temperature ${i + 1}`, celsius(t))).join("")}
       </dl></section>
       ${estimateSection(b.estimate, b.favorite.thresholds, now)}
+      ${chargeLimitSection(b.favorite)}
       <section class="card"><strong>Last 24 hours: charge</strong><div id="chart-soc"></div>
         <strong>Current</strong><div id="chart-current"></div></section>
       <section class="card"><strong>Cells</strong><dl class="fields">
@@ -227,7 +247,8 @@ async function renderDetail() {
         ${field("Spread (max − min)", `${max - min} mV`)}</dl></section>
       <section class="card"><strong>Status</strong><dl class="fields">
         ${field("Charging switch", r.chargeFetOn ? "On" : "Off")}${field("Discharge switch", r.dischargeFetOn ? "On" : "Off")}
-        ${r.protections.length ? r.protections.map((p) => field("Protection", label(p), "error")).join("") : field("Protections", "None active")}
+        ${faults(r).length ? faults(r).map((p) => field("Protection", label(p), "error")).join("") : field("Protections", "None active")}
+        ${r.protections.includes(LOCK) ? field("Software lock", "Charge switched off over Bluetooth") : ""}
       </dl></section>
       <section class="card"><strong>Battery</strong><dl class="fields">
         ${field("Cycles", r.cycles)}${field("Rated capacity", ah(r.nominalCapacityMah))}
@@ -238,7 +259,7 @@ async function renderDetail() {
     html += `<p>No data yet. Click Refresh now.</p>`;
   }
   $("#detail-body").innerHTML = html;
-  $("#detail-thresholds")?.addEventListener("click", () => editThresholds(`/api/favorites/${encodeURIComponent(openMac)}/thresholds`, b.favorite.nickname, b.favorite.thresholds));
+  $("#detail-thresholds")?.addEventListener("click", () => editThresholds(`/api/favorites/${encodeURIComponent(openMac)}/thresholds`, b.favorite.nickname, b.favorite.thresholds, b.favorite.chargeLimit));
   if (r) {
     const points = await loadHistory(openMac);
     const soc = $("#chart-soc"), cur = $("#chart-current");
@@ -308,7 +329,7 @@ async function askName(title, initial, label = "Name") {
 }
 
 /** Asks for estimate thresholds; blank = default. PUTs them to [url]. */
-async function editThresholds(url, name, t) {
+async function editThresholds(url, name, t, limited = false) {
   const input = (field, label, placeholder, help) => `<label>${label}
       <input type="number" name="${field}" min="0" max="100" step="1" placeholder="${placeholder}" value="${t?.[field] ?? ""}">
       <span class="small muted">${help}</span></label>`;
@@ -317,7 +338,9 @@ async function editThresholds(url, name, t) {
        ${input("dischargeToPct", "Discharge to (%)", "0", "Blank = 0%")}
        ${input("chargeToPct", "Charge to (%)", "100", "Blank = 100%")}
      </div>
-     <p class="small muted">Time estimates count toward these levels. Nothing is sent to the battery.</p>`,
+     <p class="small muted">${limited
+       ? "Time estimates count toward these levels. <strong>The charge limit is on:</strong> the hub stops charging at the charge level."
+       : "Time estimates count toward these levels. Nothing is sent to the battery."}</p>`,
     [{ label: "Cancel", value: "cancel" }, { label: "Reset", value: "reset" }, { label: "Save", value: "ok", cls: "primary" }]);
   if (!value) return;
   const num = (k) => { const v = (data.get(k) ?? "").trim(); return v === "" ? null : Number(v); };
@@ -376,7 +399,7 @@ async function batteryActions(mac) {
       return;
     }
     case "group": return pickGroup(b);
-    case "thresholds": return editThresholds(`/api/favorites/${enc}/thresholds`, name, b.favorite.thresholds);
+    case "thresholds": return editThresholds(`/api/favorites/${enc}/thresholds`, name, b.favorite.thresholds, b.favorite.chargeLimit);
     case "up": return act(() => api("POST", `/api/favorites/${enc}/move`, { delta: -1 }));
     case "down": return act(() => api("POST", `/api/favorites/${enc}/move`, { delta: 1 }));
     case "remove":

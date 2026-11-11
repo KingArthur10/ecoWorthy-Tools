@@ -16,6 +16,13 @@ import app.batterycommander.domain.setFavoriteThresholds
 import app.batterycommander.domain.setGroupThresholds
 import app.batterycommander.domain.setTotalThresholds
 import app.batterycommander.domain.withReading
+import app.batterycommander.domain.ChargeAction
+import app.batterycommander.domain.Favorite
+import app.batterycommander.domain.chargeLimitAction
+import app.batterycommander.domain.enforcedLimitPct
+import app.batterycommander.domain.pollIntervalMs
+import app.batterycommander.domain.setChargeLimit
+import java.util.concurrent.ConcurrentHashMap
 import app.batterycommander.domain.updateGroup
 import app.batterycommander.domain.withPollInterval
 import app.batterycommander.domain.StoredState
@@ -183,7 +190,22 @@ class HubService(
 
     fun deleteGroup(id: String) = mutate { requireGroup(it, id).deleteGroup(id) }
 
-    fun setFavoriteThresholds(mac: String, t: SocThresholds) = mutate { requireFavorite(it, mac).setFavoriteThresholds(mac, t) }
+    fun setFavoriteThresholds(mac: String, t: SocThresholds) {
+        mutate { requireFavorite(it, mac).setFavoriteThresholds(mac, t) }
+        rearmed += mac
+    }
+
+    /** Turns the charge limit on or off for one battery; it's checked on the next poll pass (within ~30 s). */
+    fun setChargeLimit(mac: String, enabled: Boolean) {
+        mutate { it.setChargeLimit(mac, enabled) }
+        rearmed += mac
+    }
+
+    /**
+     * Batteries whose limit just changed (or was turned off): they're read on the next pass, and may resume
+     * charging below the new limit without waiting out the resume gap.
+     */
+    private val rearmed: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
     fun setGroupThresholds(id: String, t: SocThresholds) = mutate { requireGroup(it, id).setGroupThresholds(id, t) }
 
@@ -208,10 +230,20 @@ class HubService(
             history.record(mac, r)
             mutate { it.withReading(mac, r) }
             _statuses.update { it + (mac to PollStatus(PollStatus.State.IDLE, atMs = clock())) }
+            applyChargeLimit(mac, r)
         }.onFailure { e ->
             _statuses.update { it + (mac to PollStatus(PollStatus.State.FAILED, e.message ?: e.toString(), clock())) }
         }
         return result
+    }
+
+    /** Applies the battery's charge limit to a fresh reading (core chargeLimitAction), logging any switch as "profile". */
+    private suspend fun applyChargeLimit(mac: String, r: BatteryReading) {
+        val s = _state.value
+        val fav = s.favorites.firstOrNull { it.mac == mac } ?: return
+        if (s.groups.firstOrNull { it.id == fav.groupId }?.wiring == Wiring.SERIES) return
+        val action = chargeLimitAction(r, fav.enforcedLimitPct, rearmed = rearmed.remove(mac)) ?: return
+        setCharge(mac, on = action == ChargeAction.TURN_ON, source = "profile")
     }
 
     /**
@@ -252,7 +284,8 @@ class HubService(
 
     /**
      * Every [checkEvery], picks up external edits to the state file, then refreshes each favorite
-     * whose reading is older than [pollInterval]. In manual mode it reads nothing. A battery that
+     * whose reading is older than [pollInterval] (or 1 min for one charging close to its charge limit), and any whose
+     * limit just changed. In manual mode it reads nothing, so charge limits are only checked on manual refreshes. A battery that
      * just failed waits [failureBackoff] before its next try, so one out-of-range battery doesn't
      * monopolize the radio. The interval is re-read each pass, so changes apply within [checkEvery].
      */
@@ -261,11 +294,13 @@ class HubService(
             reloadIfChangedExternally()
             val interval = pollInterval
             for (fav in if (interval == null) emptyList() else _state.value.favorites) {
-                val last = _state.value.readings[fav.mac]?.timestampMs ?: 0
+                val reading = _state.value.readings[fav.mac]
+                val last = reading?.timestampMs ?: 0
                 val status = _statuses.value[fav.mac]
                 val backingOff = status?.state == PollStatus.State.FAILED &&
                     clock() - (status.atMs ?: 0) < failureBackoff.inWholeMilliseconds
-                if (clock() - last >= interval!!.inWholeMilliseconds && !backingOff) refresh(fav.mac)
+                val due = pollIntervalMs(interval!!.inWholeMilliseconds, reading, fav.enforcedLimitPct)
+                if ((clock() - last >= due || fav.mac in rearmed) && !backingOff) refresh(fav.mac)
             }
             delay(checkEvery)
         }
@@ -276,6 +311,9 @@ class HubService(
         if (!store.changedExternally()) return
         val fromDisk = store.load()
         val keep = fromDisk.favorites.map { it.mac }.toSet()
+        // A limit changed outside the hub (`battery-hub charge-limit`, `thresholds`): re-check those batteries now.
+        val before = _state.value.favorites.associateBy { it.mac }
+        fromDisk.favorites.filter { f -> before[f.mac]?.let { limitKey(it) != limitKey(f) } == true }.forEach { rearmed += it.mac }
         mutate { current ->
             fromDisk.copy(
                 readings = fromDisk.readings.filterKeys { it in keep } +
@@ -285,6 +323,8 @@ class HubService(
             )
         }
     }
+
+    private fun limitKey(f: Favorite) = f.chargeLimit to f.thresholds.high
 
     private val saveLock = Any()
 

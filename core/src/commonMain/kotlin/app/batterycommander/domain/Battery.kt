@@ -17,6 +17,8 @@ data class Favorite(
     val groupId: String? = null,
     /** Levels its time estimate counts toward. */
     val thresholds: SocThresholds = SocThresholds(),
+    /** Enforce [SocThresholds.chargeToPct] with the charge MOSFET (ChargeLimit.kt). Only the hub enforces it so far. */
+    val chargeLimit: Boolean = false,
 )
 
 @Serializable

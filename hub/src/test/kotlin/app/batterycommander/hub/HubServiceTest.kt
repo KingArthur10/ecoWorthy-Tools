@@ -295,6 +295,52 @@ class HubServiceTest {
     }
 
     @Test
+    fun pollerEnforcesTheChargeLimit() = runTest {
+        // A battery charging 1% per minute, whose charge switch the fake BMS honours.
+        var soc = 66
+        var fet = true
+        fun bms() = reading(soc).copy(
+            currentMa = if (fet) 20_000 else 0, chargeFetOn = fet,
+            protections = if (fet) emptyList() else listOf("MOSFET_SOFTWARE_LOCK"),
+        )
+        val switches = mutableListOf<Boolean>()
+        StateStore(stateFile).save(StoredState(favorites = listOf(Favorite("A", "Test 3"))))
+        val svc = HubService(
+            StateStore(stateFile), history, { bms() },
+            controller = { _, on -> switches += on; fet = on; bms() },
+            clock = { now },
+        )
+        svc.setFavoriteThresholds("A", app.batterycommander.domain.socThresholds(null, 70))
+        svc.setChargeLimit("A", true)
+        val job = launch { svc.runPoller(checkEvery = 30.seconds) }
+        advanceTimeBy(1.seconds)
+        assertEquals(emptyList(), switches) // 66% < 70%
+
+        // Near the limit it reads every minute (the interval is 10 min), so it stops at 70%, not later.
+        repeat(4) { now += 60_000; soc += 1; advanceTimeBy(60.seconds) }
+        assertEquals(listOf(false), switches)
+        assertEquals(70, svc.state.value.readings["A"]!!.stateOfChargePct)
+        assertEquals("profile", history.commands().first().source)
+
+        // Holding: no flapping while it sits at the limit.
+        repeat(3) { now += 10 * 60_000; advanceTimeBy(10.minutes) }
+        assertEquals(listOf(false), switches)
+
+        // Raising the limit resumes charging on the next pass, without waiting for 65%.
+        svc.setFavoriteThresholds("A", app.batterycommander.domain.socThresholds(null, 75))
+        advanceTimeBy(30.seconds)
+        assertEquals(listOf(false, true), switches)
+
+        // Turning the limit off while the hub holds it releases the battery.
+        soc = 75; now += 60_000; advanceTimeBy(60.seconds)
+        assertEquals(listOf(false, true, false), switches)
+        svc.setChargeLimit("A", false)
+        advanceTimeBy(30.seconds)
+        assertEquals(listOf(false, true, false, true), switches)
+        job.cancel()
+    }
+
+    @Test
     fun scanHidesFavoritesAndRejectsOverlap() = runTest {
         StateStore(stateFile).save(StoredState(favorites = listOf(Favorite("A5:C2:39:57:73:E3", "Garage"))))
         val svc = HubService(

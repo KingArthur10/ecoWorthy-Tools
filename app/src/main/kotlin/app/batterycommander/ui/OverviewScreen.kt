@@ -64,6 +64,7 @@ import app.batterycommander.domain.BatteryReading
 import app.batterycommander.domain.MANUAL_REFRESH
 import app.batterycommander.domain.MAX_NAME_LENGTH
 import app.batterycommander.domain.POLL_INTERVAL_CHOICES
+import app.batterycommander.domain.SOFTWARE_LOCK
 import app.batterycommander.domain.SocThresholds
 import app.batterycommander.domain.TimeEstimate
 import app.batterycommander.domain.Wiring
@@ -365,8 +366,10 @@ fun StatusLine(b: BatteryUi, now: Long) {
     val r = b.reading
     val parts = buildList {
         r?.let {
-            add(flowLabel(it))
-            if (it.protections.isNotEmpty()) add("⚠ " + it.protections.joinToString { p -> protectionLabel(p) })
+            // The lock flag means the charge switch was turned off over Bluetooth (a charge limit), not a fault.
+            add(if (!it.chargeFetOn && SOFTWARE_LOCK in it.protections) "Charge switched off over Bluetooth" else flowLabel(it))
+            val faults = it.protections - SOFTWARE_LOCK
+            if (faults.isNotEmpty()) add("⚠ " + faults.joinToString { p -> protectionLabel(p) })
             add(formatAge(now, it.timestampMs))
         }
         when (val s = b.status) {
@@ -375,7 +378,7 @@ fun StatusLine(b: BatteryUi, now: Long) {
             RefreshStatus.Idle -> {}
         }
     }
-    val warn = b.status is RefreshStatus.Failed || r?.protections?.isNotEmpty() == true
+    val warn = b.status is RefreshStatus.Failed || r?.protections?.any { it != SOFTWARE_LOCK } == true
     Text(
         parts.joinToString(" · "),
         style = MaterialTheme.typography.bodySmall,
