@@ -5,6 +5,11 @@ the user's ECO-WORTHY LiFePO4 batteries over BLE. Specs live in `docs/` and are 
 when decisions change. Start with `README.md` (doc map, build and install), `ROADMAP.md` (what's done and next), and
 `docs/open-questions.md`.
 
+## Repository
+- GitHub: https://github.com/KingArthur10/ecoWorthy-Tools (**public**), remote `origin`, branch `main`.
+- Commits are authored as `KingArthur10 <8808608+KingArthur10@users.noreply.github.com>` (repo-local git config; the
+  machine's global config is a placeholder). Keep it that way; never publish the user's personal email.
+
 ## Status (last session: 2026-11-10)
 - **Done and tested on real hardware:** the read-only JBD driver (`core`); the Android app (favorites, nicknames,
   search/identify, overview with all-batteries totals and groups, detail, refresh); the Linux hub (`battery-hub`
