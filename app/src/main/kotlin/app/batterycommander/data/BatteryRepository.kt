@@ -18,6 +18,7 @@ import app.batterycommander.domain.removeFavorite
 import app.batterycommander.domain.renameFavorite
 import app.batterycommander.domain.summarize
 import app.batterycommander.domain.updateGroup
+import app.batterycommander.domain.withPollInterval
 import app.batterycommander.domain.toReading
 import app.batterycommander.protocol.jbd.JbdClient
 import app.batterycommander.protocol.jbd.JbdGatt
@@ -102,8 +103,11 @@ class BatteryRepository(
     val searching: StateFlow<Boolean> = _searching.asStateFlow()
     private var searchJob: Job? = null
 
-    /** Polling interval: a favorite whose reading is older than this gets refreshed. */
-    var pollInterval: Duration = 10.minutes
+    /** Minutes between automatic reads; [MANUAL_REFRESH] = only when the user taps refresh. */
+    val pollIntervalMinutes: StateFlow<Int> =
+        state.map { it.settings.pollIntervalMinutes }.stateIn(scope, SharingStarted.Eagerly, state.value.settings.pollIntervalMinutes)
+
+    fun setPollInterval(minutes: Int) = mutate { it.withPollInterval(minutes) }
 
     // --- Favorites -------------------------------------------------------------------------
 
@@ -180,16 +184,19 @@ class BatteryRepository(
     suspend fun identify(mac: String): Result<BatteryReading> = runCatching { read(mac) }
 
     /**
-     * Refreshes every favorite whose reading is older than [pollInterval], checking every 30 s.
-     * Runs until cancelled; the activity runs it while visible (background monitoring comes later).
+     * Refreshes every favorite whose reading is older than the polling interval, checking every
+     * 30 s; in manual mode it never touches the radio. Runs until cancelled; the activity runs it
+     * while visible (background monitoring comes later).
      */
     suspend fun pollWhileActive() {
         while (true) {
-            if (ble.hasPermissions() && ble.isEnabled) {
+            val settings = state.value.settings
+            if (!settings.isManual && ble.hasPermissions() && ble.isEnabled) {
+                val interval = settings.pollIntervalMinutes.minutes
                 for (fav in state.value.favorites) {
                     val last = state.value.readings[fav.mac]?.timestampMs ?: 0
                     val failedRecently = (statuses.value[fav.mac] as? RefreshStatus.Failed)?.let { clock() - it.atMs < 60_000 } == true
-                    if (clock() - last >= pollInterval.inWholeMilliseconds && !failedRecently) refresh(fav.mac)
+                    if (clock() - last >= interval.inWholeMilliseconds && !failedRecently) refresh(fav.mac)
                 }
             }
             delay(30.seconds)

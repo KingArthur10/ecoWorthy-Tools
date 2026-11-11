@@ -4,6 +4,7 @@ import app.batterycommander.domain.AggregateStats
 import app.batterycommander.domain.BatteryGroup
 import app.batterycommander.domain.BatteryReading
 import app.batterycommander.domain.Favorite
+import app.batterycommander.domain.Settings
 import app.batterycommander.domain.Wiring
 import app.batterycommander.domain.normalizeMac
 import app.batterycommander.domain.summarize
@@ -47,7 +48,7 @@ data class GroupDto(val group: BatteryGroup, val stats: AggregateStats?, val mem
 @Serializable
 data class OverviewDto(
     val nowMs: Long,
-    val pollIntervalMs: Long,
+    val settings: Settings,
     val total: AggregateStats?,
     val groups: List<GroupDto>,
     val ungrouped: List<String>,
@@ -60,7 +61,7 @@ fun HubService.overview(nowMs: Long = System.currentTimeMillis()): OverviewDto {
     val statuses = statuses.value
     return OverviewDto(
         nowMs = nowMs,
-        pollIntervalMs = pollInterval.inWholeMilliseconds,
+        settings = s.settings,
         total = summary.total,
         groups = summary.groups.map { g -> GroupDto(g.group, g.stats, g.members.map { it.mac }) },
         ungrouped = summary.ungrouped.map { it.mac },
@@ -85,6 +86,9 @@ data class GroupRequest(val name: String? = null, val wiring: Wiring? = null)
 
 @Serializable
 data class ScanRequest(val seconds: Int = 15)
+
+@Serializable
+data class SettingsRequest(val pollIntervalMinutes: Int)
 
 @Serializable
 data class ErrorDto(val error: String)
@@ -149,6 +153,13 @@ fun Application.hubModule(
         post("/api/refresh") {
             jobs.launch { service.refreshAll() }
             call.respond(HttpStatusCode.Accepted, mapOf("status" to "refreshing"))
+        }
+
+        // --- Settings ---
+        get("/api/settings") { call.respond(service.state.value.settings) }
+        put("/api/settings") {
+            service.setPollInterval(call.receive<SettingsRequest>().pollIntervalMinutes)
+            call.respond(service.state.value.settings)
         }
 
         // --- Discovery ---

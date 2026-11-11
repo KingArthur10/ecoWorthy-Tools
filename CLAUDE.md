@@ -18,8 +18,9 @@ when decisions change. Start with `README.md` (doc map, build and install), `ROA
   2. Controls: charge/discharge MOSFETs, Storage/Trip profiles, reserve (`docs/product/features/control.md`,
      `charge-limits-and-profiles.md`, ADR 0002). **The first write to a real battery must be a single supervised test,
      with the user's explicit OK** (toggle charge off/on on one idle battery). Follow `docs/safety.md`.
-- **Smaller gaps:** no Android background monitoring (it only polls while visible; needs a foreground service); no
-  Android settings screen (the 10 min interval is fixed); no time-to-empty/full estimates; no nested banks (2S2P);
+- **Refresh interval** is a per-device setting (`StoredState.settings`; phone Settings dialog, hub dashboard Settings,
+  `battery-hub interval`). Manual only = no automatic radio use. The phone build with it isn't installed yet (the phone wasn't connected).
+- **Smaller gaps:** no Android background monitoring (it only polls while visible; needs a foreground service); no time-to-empty/full estimates; no nested banks (2S2P);
   the hub has no continuous passive scanning.
 
 ## Hardware facts (verified; details in docs/hardware/)

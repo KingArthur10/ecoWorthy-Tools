@@ -17,6 +17,9 @@ const celsius = (d) => (d / 10).toFixed(1) + " °C";
 const capacity = (r) => r.fullChargeCapacityMah ?? r.nominalCapacityMah;
 const nominalMv = (r) => (r.cellVoltagesMv.length ? r.cellVoltagesMv.length * 3200 : r.packVoltageMv);
 const wiringLabel = (w) => ({ PARALLEL: "Parallel", SERIES: "Series", NONE: "Not wired together" }[w]);
+const INTERVALS = [0, 1, 2, 5, 10, 15, 30, 60, 120]; // keep in sync with core POLL_INTERVAL_CHOICES
+const intervalLabel = (m) =>
+  m === 0 ? "Manual only" : m < 60 ? `Every ${m} min` : m === 60 ? "Every hour" : m % 60 === 0 ? `Every ${m / 60} hours` : `Every ${m} min`;
 const label = (name) => name.toLowerCase().replaceAll("_", " ").replace(/^./, (c) => c.toUpperCase());
 
 function age(now, then) {
@@ -107,7 +110,7 @@ function render() {
   if (o.groups.length && o.ungrouped.length) html += `<h3 class="section-title">Not in a group</h3>`;
   html += `<div class="grid">${o.ungrouped.map((m) => batteryCard(o.batteries[m], now)).join("")}</div>`;
   $("#overview").innerHTML = html;
-  $("#updated").textContent = "Updated " + new Date(now).toLocaleTimeString();
+  $("#updated").textContent = `Updated ${new Date(now).toLocaleTimeString()} · ${intervalLabel(o.settings.pollIntervalMinutes)}`;
   if (openMac) renderDetail();
 }
 
@@ -344,6 +347,24 @@ async function groupActions(id) {
   }
 }
 
+// --- Settings ---------------------------------------------------------------------------------
+
+async function openSettings() {
+  const current = overview?.settings.pollIntervalMinutes ?? 10;
+  const choices = INTERVALS.includes(current) ? INTERVALS : [...INTERVALS, current].sort((a, b) => a - b);
+  const radios = choices.map((m) =>
+    `<label class="choice"><input type="radio" name="interval" value="${m}" ${m === current ? "checked" : ""}> ${intervalLabel(m)}</label>`).join("");
+  const { value, data } = await modal("Settings",
+    `<div><strong>Automatic refresh</strong>
+       <p class="small muted">How often the hub reads each battery over Bluetooth. Longer intervals leave the radio idle
+       (and the batteries free for the phone) more of the time. Manual only reads just when you click Refresh or Search.</p>
+       ${radios}</div>`,
+    [{ label: "Cancel", value: "cancel" }, { label: "Save", value: "ok", cls: "primary" }]);
+  if (value !== "ok") return;
+  const minutes = Number(data.get("interval"));
+  act(() => api("PUT", "/api/settings", { pollIntervalMinutes: minutes }));
+}
+
 // --- Search -----------------------------------------------------------------------------------
 
 let scanTimer = null;
@@ -446,6 +467,7 @@ $("#detail-refresh").addEventListener("click", () => {
 });
 $("#refresh-all").addEventListener("click", () => act(() => api("POST", "/api/refresh")));
 $("#search").addEventListener("click", startScan);
+$("#settings").addEventListener("click", openSettings);
 
 poll();
 pollScan();

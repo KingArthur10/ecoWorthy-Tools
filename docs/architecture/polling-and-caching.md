@@ -1,7 +1,10 @@
 # Polling and caching
 
 ## Polling cycle
-- Runs every N minutes (default 10, configurable), and also on demand ("Refresh all" or "Refresh now").
+- Runs every N minutes, and also on demand ("Refresh all" or "Refresh now"). N is a per-device setting
+  (`StoredState.settings.pollIntervalMinutes`, default 10; choices are Manual only and 1, 2, 5, 10, 15, 30, 60, or 120 min).
+  **Manual only** means the poller never touches the radio. Set it in the phone's Settings dialog, the hub dashboard's
+  Settings, `PUT /api/settings`, or `battery-hub interval <minutes|manual>`. Changes apply within one 30 s pass.
 - For each favorite in turn: scan briefly for it (which also records signal strength), connect, read all data,
   write the cache and history, **disconnect cleanly**, then move to the next.
 - Batteries are polled one at a time, not all at once. That avoids hitting Android's connection limit and keeps power use down.

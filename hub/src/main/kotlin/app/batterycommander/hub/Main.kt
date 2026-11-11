@@ -1,6 +1,10 @@
 package app.batterycommander.hub
 
 import app.batterycommander.domain.Favorite
+import app.batterycommander.domain.MANUAL_REFRESH
+import app.batterycommander.domain.StoredState
+import app.batterycommander.domain.pollIntervalLabel
+import app.batterycommander.domain.withPollInterval
 import app.batterycommander.domain.formatAge
 import app.batterycommander.hub.bluez.BluezBle
 import app.batterycommander.hub.store.HistoryDb
@@ -35,7 +39,6 @@ import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.util.Locale
-import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 private const val DEFAULT_PORT = 8640
@@ -47,14 +50,13 @@ class Hub : CliktCommand(name = "battery-hub") {
 class Serve : CliktCommand() {
     private val host by option(help = "Address to listen on. Default: this machine only.").default("127.0.0.1")
     private val port by option(help = "HTTP port").int().default(DEFAULT_PORT)
-    private val interval by option(help = "Minutes between reads of each battery").int().default(10)
     private val adapter by option(help = "Bluetooth adapter").default("hci0")
 
     override fun run() = runBlocking {
         val store = StateStore()
         val history = HistoryDb()
         val ble = BluezBle(adapter)
-        val service = HubService(store, history, BluezReader(ble), BluezScanner(ble), pollInterval = interval.minutes)
+        val service = HubService(store, history, BluezReader(ble), BluezScanner(ble))
         val jobs = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val poller = jobs.launch { service.runPoller() }
         val allowedHosts = LOOPBACK_HOSTS + host
@@ -71,7 +73,8 @@ class Serve : CliktCommand() {
                 ble.close()
             },
         )
-        echo("Battery hub: ${service.state.value.favorites.size} favorites, reading each every $interval min")
+        val s = service.state.value
+        echo("Battery hub: ${s.favorites.size} favorites, refresh: ${pollIntervalLabel(s.settings.pollIntervalMinutes).lowercase()}")
         echo("Data: ${HubPaths.dataDir}")
         echo("Dashboard: http://$host:$port/")
         server.start(wait = false)
@@ -93,6 +96,7 @@ class Status : CliktCommand() {
             HubService(store, HistoryDb(), { error("offline") }).overview()
         }
         val now = o.nowMs
+        echo("Refresh: ${pollIntervalLabel(o.settings.pollIntervalMinutes).lowercase()}")
         o.total?.let {
             echo(
                 String.format(
@@ -135,6 +139,33 @@ class Refresh : CliktCommand() {
     override fun run() {
         post(if (mac == null) "$url/api/refresh" else "$url/api/batteries/$mac/refresh")
         echo("Refresh requested. Check `battery-hub status` in a few seconds.")
+    }
+}
+
+class Interval : CliktCommand() {
+    private val value by argument(help = "Minutes between automatic reads (1–1440), or \"manual\"")
+    private val url by option(help = "Hub URL").default("http://127.0.0.1:$DEFAULT_PORT")
+
+    override fun help(context: com.github.ajalt.clikt.core.Context) =
+        "Set how often the hub reads each battery. \"manual\" keeps the radio idle except on refresh/scan."
+
+    override fun run() {
+        val minutes = if (value.equals("manual", ignoreCase = true)) MANUAL_REFRESH
+        else value.toIntOrNull() ?: throw CliktError("Expected minutes or \"manual\", got: $value")
+        try {
+            StoredState().withPollInterval(minutes) // validate before touching anything
+        } catch (e: IllegalArgumentException) {
+            throw CliktError(e.message)
+        }
+        val body = """{"pollIntervalMinutes":$minutes}"""
+        try {
+            put("$url/api/settings", body)
+        } catch (e: HubUnreachable) {
+            // Hub not running: write the setting to disk; it applies on next start.
+            val store = StateStore()
+            store.save(store.load().withPollInterval(minutes))
+        }
+        echo("Refresh: ${pollIntervalLabel(minutes).lowercase()}")
     }
 }
 
@@ -233,24 +264,30 @@ class Probe : CliktCommand() {
 
 private val http: HttpClient = HttpClient.newHttpClient()
 
+private class HubUnreachable(url: String) : CliktError("Hub not reachable at $url (is `battery-hub serve` running?)")
+
 private fun get(url: String): String {
     val res = http.send(HttpRequest.newBuilder(URI(url)).GET().build(), HttpResponse.BodyHandlers.ofString())
     if (res.statusCode() != 200) throw CliktError("GET $url → ${res.statusCode()}")
     return res.body()
 }
 
-private fun post(url: String, body: String = "{}") {
+private fun put(url: String, body: String) = send("PUT", url, body)
+
+private fun post(url: String, body: String = "{}") = send("POST", url, body)
+
+private fun send(method: String, url: String, body: String) {
     val req = HttpRequest.newBuilder(URI(url))
         .header("Content-Type", "application/json")
         .header("X-Battery-Hub", "1")
-        .POST(HttpRequest.BodyPublishers.ofString(body))
+        .method(method, HttpRequest.BodyPublishers.ofString(body))
         .build()
     val res = try {
         http.send(req, HttpResponse.BodyHandlers.ofString())
     } catch (e: Exception) {
-        throw CliktError("Hub not reachable at $url (is `battery-hub serve` running?)")
+        throw HubUnreachable(url)
     }
-    if (res.statusCode() !in 200..299) throw CliktError("POST $url → ${res.statusCode()}: ${res.body()}")
+    if (res.statusCode() !in 200..299) throw CliktError("$method $url → ${res.statusCode()}: ${res.body()}")
 }
 
-fun main(args: Array<String>) = Hub().subcommands(Serve(), Status(), Refresh(), Scan(), ImportPhone(), AddFavorite(), Probe()).main(args)
+fun main(args: Array<String>) = Hub().subcommands(Serve(), Status(), Refresh(), Interval(), Scan(), ImportPhone(), AddFavorite(), Probe()).main(args)

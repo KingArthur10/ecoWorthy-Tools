@@ -38,10 +38,24 @@ class FleetTest {
     }
 
     @Test
+    fun pollIntervalDefaultsValidatesAndLabels() {
+        assertEquals(DEFAULT_POLL_MINUTES, StoredState().settings.pollIntervalMinutes)
+        assertEquals(true, StoredState().withPollInterval(MANUAL_REFRESH).settings.isManual)
+        assertEquals(30, StoredState().withPollInterval(30).settings.pollIntervalMinutes)
+        kotlin.test.assertFailsWith<IllegalArgumentException> { StoredState().withPollInterval(-1) }
+        kotlin.test.assertFailsWith<IllegalArgumentException> { StoredState().withPollInterval(1441) }
+        assertEquals(
+            listOf("Manual only", "Every 1 min", "Every 2 min", "Every 5 min", "Every 10 min", "Every 15 min", "Every 30 min", "Every hour", "Every 2 hours"),
+            POLL_INTERVAL_CHOICES.map(::pollIntervalLabel),
+        )
+    }
+
+    @Test
     fun readsPhoneFormat() {
         // As written by the Android app (pretty-printed, defaults omitted).
         val json = """{"favorites":[{"mac":"A5:C2:39:57:78:44","nickname":"Close","bleName":"DP04S007L4S100A"}]}"""
         val parsed = Json { ignoreUnknownKeys = true }.decodeFromString<StoredState>(json)
         assertEquals("Close", parsed.favorites.single().nickname)
+        assertEquals(DEFAULT_POLL_MINUTES, parsed.settings.pollIntervalMinutes) // older files have no settings
     }
 }

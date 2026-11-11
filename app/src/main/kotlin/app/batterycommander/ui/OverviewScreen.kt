@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -19,6 +20,7 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -40,6 +42,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -58,11 +61,14 @@ import app.batterycommander.data.RefreshStatus
 import app.batterycommander.domain.AggregateStats
 import app.batterycommander.domain.BatteryGroup
 import app.batterycommander.domain.BatteryReading
+import app.batterycommander.domain.MANUAL_REFRESH
 import app.batterycommander.domain.MAX_NAME_LENGTH
+import app.batterycommander.domain.POLL_INTERVAL_CHOICES
 import app.batterycommander.domain.Wiring
 import app.batterycommander.domain.capacityMah
 import app.batterycommander.domain.formatAge
 import app.batterycommander.domain.nominalVoltageMv
+import app.batterycommander.domain.pollIntervalLabel
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -84,6 +90,8 @@ fun OverviewScreen(repo: BatteryRepository, onOpen: (String) -> Unit) {
     var newGroupFor by remember { mutableStateOf<BatteryUi?>(null) }
     var renamingGroup by remember { mutableStateOf<BatteryGroup?>(null) }
     var rewiringGroup by remember { mutableStateOf<BatteryGroup?>(null) }
+    var showSettings by remember { mutableStateOf(false) }
+    val pollMinutes by repo.pollIntervalMinutes.collectAsStateWithLifecycle()
 
     val favoriteCard: @Composable (BatteryUi) -> Unit = { b ->
         FavoriteCard(
@@ -101,10 +109,20 @@ fun OverviewScreen(repo: BatteryRepository, onOpen: (String) -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Batteries") },
+                title = {
+                    Column {
+                        Text("Batteries")
+                        Text(
+                            pollIntervalLabel(pollMinutes) + if (pollMinutes == MANUAL_REFRESH) "" else " while open",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
                 actions = {
                     IconButton(onClick = repo::refreshAll) { Icon(Icons.Filled.Refresh, "Refresh all") }
                     IconButton(onClick = { repo.search() }, enabled = !searching) { Icon(Icons.Filled.Search, "Search") }
+                    IconButton(onClick = { showSettings = true }) { Icon(Icons.Filled.Settings, "Settings") }
                 },
             )
         },
@@ -177,6 +195,13 @@ fun OverviewScreen(repo: BatteryRepository, onOpen: (String) -> Unit) {
             initial = b.favorite.nickname,
             onDismiss = { renaming = null },
             onConfirm = { repo.rename(b.favorite.mac, it); renaming = null },
+        )
+    }
+    if (showSettings) {
+        IntervalDialog(
+            current = pollMinutes,
+            onDismiss = { showSettings = false },
+            onPick = { repo.setPollInterval(it); showSettings = false },
         )
     }
     pickingGroupFor?.let { b ->
@@ -521,4 +546,28 @@ private fun RadioRow(label: String, selected: Boolean, onClick: () -> Unit) {
         Spacer(Modifier.width(8.dp))
         Text(label)
     }
+}
+
+@Composable
+private fun IntervalDialog(current: Int, onDismiss: () -> Unit, onPick: (Int) -> Unit) {
+    var selected by remember { mutableIntStateOf(current) }
+    val choices = if (current in POLL_INTERVAL_CHOICES) POLL_INTERVAL_CHOICES else (POLL_INTERVAL_CHOICES + current).sorted()
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Automatic refresh") },
+        text = {
+            Column {
+                Text(
+                    "How often to read each battery while the app is open. Longer intervals use less phone battery " +
+                        "and leave the batteries free for the hub. Manual only reads just when you tap refresh.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                for (m in choices) RadioRow(pollIntervalLabel(m), selected = m == selected) { selected = m }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onPick(selected) }) { Text("Save") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }

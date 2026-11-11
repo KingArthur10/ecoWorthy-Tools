@@ -12,6 +12,7 @@ import app.batterycommander.domain.normalizeMac
 import app.batterycommander.domain.removeFavorite
 import app.batterycommander.domain.renameFavorite
 import app.batterycommander.domain.updateGroup
+import app.batterycommander.domain.withPollInterval
 import app.batterycommander.domain.StoredState
 import app.batterycommander.domain.toReading
 import app.batterycommander.hub.bluez.BluezBle
@@ -84,7 +85,6 @@ class HubService(
     private val history: HistoryDb,
     private val reader: BatteryReader,
     private val scanner: BatteryScanner = BatteryScanner { emptyList() },
-    val pollInterval: Duration = 10.minutes,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     private val _state = MutableStateFlow(store.load())
@@ -92,6 +92,12 @@ class HubService(
 
     private val _statuses = MutableStateFlow<Map<String, PollStatus>>(emptyMap())
     val statuses: StateFlow<Map<String, PollStatus>> = _statuses.asStateFlow()
+
+    /** Time between automatic reads of each battery, or null for manual-only (the radio stays idle). */
+    val pollInterval: Duration?
+        get() = _state.value.settings.let { if (it.isManual) null else it.pollIntervalMinutes.minutes }
+
+    fun setPollInterval(minutes: Int) = mutate { it.withPollInterval(minutes) }
 
     /** One radio operation at a time: reads and scans both take this. */
     private val radioLock = Mutex()
@@ -180,18 +186,20 @@ class HubService(
 
     /**
      * Every [checkEvery], picks up external edits to the state file, then refreshes each favorite
-     * whose reading is older than [pollInterval]. A battery that just failed waits [failureBackoff]
-     * before its next try, so one out-of-range battery doesn't monopolize the radio.
+     * whose reading is older than [pollInterval]. In manual mode it reads nothing. A battery that
+     * just failed waits [failureBackoff] before its next try, so one out-of-range battery doesn't
+     * monopolize the radio. The interval is re-read each pass, so changes apply within [checkEvery].
      */
     suspend fun runPoller(checkEvery: Duration = 30.seconds, failureBackoff: Duration = 2.minutes) {
         while (true) {
             reloadIfChangedExternally()
-            for (fav in _state.value.favorites) {
+            val interval = pollInterval
+            for (fav in if (interval == null) emptyList() else _state.value.favorites) {
                 val last = _state.value.readings[fav.mac]?.timestampMs ?: 0
                 val status = _statuses.value[fav.mac]
                 val backingOff = status?.state == PollStatus.State.FAILED &&
                     clock() - (status.atMs ?: 0) < failureBackoff.inWholeMilliseconds
-                if (clock() - last >= pollInterval.inWholeMilliseconds && !backingOff) refresh(fav.mac)
+                if (clock() - last >= interval!!.inWholeMilliseconds && !backingOff) refresh(fav.mac)
             }
             delay(checkEvery)
         }

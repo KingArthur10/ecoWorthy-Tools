@@ -23,6 +23,7 @@ battery-hub add-favorite A5:C2:39:57:78:44 "Garage"   # add or rename one
 battery-hub import-phone      # or copy favorites, nicknames, and groups from the phone (USB + adb)
 battery-hub status            # all batteries, groups, and totals in the terminal
 battery-hub refresh [MAC]     # read now
+battery-hub interval 30       # automatic refresh every 30 min (or "manual" to keep the radio idle)
 ```
 Dashboard: http://127.0.0.1:8640/ (this machine only for now; LAN access comes with pairing). It's fully standalone:
 Search (with Identify), add, rename, reorder, and remove favorites; create, edit, and delete groups and assign batteries to them;

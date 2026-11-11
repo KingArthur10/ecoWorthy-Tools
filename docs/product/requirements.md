@@ -23,6 +23,7 @@ Priority: **M** = must (MVP), **S** = should, **C** = could.
 | FR-012 | The list scrolls when favorites outnumber the screen | M |
 | FR-013 | A Search button lists batteries that aren't favorites, below the favorites | M |
 | FR-014 | A "Refresh all" action starts a polling cycle right away | M |
+| FR-019 | Automatic refresh interval, set per device (phone and hub separately): Manual only, or 1 min to 2 h (default 10 min). Manual leaves the radio idle except on explicit refresh or search | M |
 | FR-015 | A bank summary row with combined SOC and time estimate (SOC, Ah, and Wh done; time estimate still to do) | S |
 | FR-017 | Each favorite card shows remaining and total capacity (Ah and Wh) | M |
 | FR-018 | An "All batteries" total card: combined SOC, Ah, Wh, and power, with partial data flagged | M |

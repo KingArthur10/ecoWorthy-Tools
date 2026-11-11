@@ -61,7 +61,7 @@ class HubServiceTest {
 
     private fun service(favorites: List<Favorite>, reader: BatteryReader): HubService {
         StateStore(stateFile).save(StoredState(favorites = favorites, groups = listOf(BatteryGroup("g", "House", Wiring.PARALLEL))))
-        return HubService(StateStore(stateFile), history, reader, pollInterval = 10.minutes, clock = { now })
+        return HubService(StateStore(stateFile), history, reader, clock = { now })
     }
 
     @Test
@@ -107,6 +107,26 @@ class HubServiceTest {
 
         now += 10 * 60_000; advanceTimeBy(30.seconds)
         assertEquals(listOf("A", "B", "B", "A", "B"), reads) // A due again
+        job.cancel()
+    }
+
+    @Test
+    fun manualModeLeavesTheRadioIdle() = runTest {
+        val reads = mutableListOf<String>()
+        val svc = service(listOf(Favorite("A", "a"))) { mac -> reads += mac; reading(50) }
+        svc.setPollInterval(0)
+        val job = launch { svc.runPoller(checkEvery = 30.seconds) }
+        advanceTimeBy(1.seconds)
+        now += 60 * 60_000; advanceTimeBy(30.seconds)
+        assertEquals(emptyList(), reads) // nothing read automatically, even when stale
+
+        svc.refresh("A") // explicit refresh still works
+        assertEquals(listOf("A"), reads)
+
+        svc.setPollInterval(5) // switching back applies on the next pass
+        now += 6 * 60_000; advanceTimeBy(30.seconds)
+        assertEquals(listOf("A", "A"), reads)
+        assertEquals(5, StateStore(stateFile).load().settings.pollIntervalMinutes) // persisted
         job.cancel()
     }
 
@@ -191,6 +211,10 @@ class HubServiceTest {
 
         assertEquals(HttpStatusCode.NoContent, send(HttpMethod.Post, "/api/favorites/A5:C2:39:57:73:F1/move", """{"delta":-1}""").status)
         assertEquals(listOf("Shed", "Garage left"), svc.state.value.favorites.map { it.nickname })
+
+        assertEquals(HttpStatusCode.OK, send(HttpMethod.Put, "/api/settings", """{"pollIntervalMinutes":0}""").status)
+        assertEquals(HttpStatusCode.BadRequest, send(HttpMethod.Put, "/api/settings", """{"pollIntervalMinutes":5000}""").status)
+        assertEquals(true, svc.state.value.settings.isManual)
 
         assertEquals(HttpStatusCode.NoContent, send(HttpMethod.Delete, "/api/groups/$id").status)
         assertEquals(null, svc.state.value.favorites[0].groupId)
