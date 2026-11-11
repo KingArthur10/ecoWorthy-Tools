@@ -21,6 +21,7 @@ import app.batterycommander.domain.withPollInterval
 import app.batterycommander.domain.StoredState
 import app.batterycommander.domain.toReading
 import app.batterycommander.hub.bluez.BluezBle
+import app.batterycommander.hub.store.CommandRecord
 import app.batterycommander.hub.store.HistoryDb
 import app.batterycommander.hub.store.StateStore
 import app.batterycommander.protocol.jbd.JbdClient
@@ -41,6 +42,27 @@ import kotlin.time.Duration.Companion.seconds
 /** Reads one battery fully. Real implementation: [BluezReader]; tests use a fake. */
 fun interface BatteryReader {
     suspend fun read(mac: String): BatteryReading
+}
+
+/**
+ * Switches a battery's charge MOSFET and returns a full reading taken afterwards, which must confirm it.
+ * Real implementation: [BluezController]. The only state-changing operation the hub has (docs/safety.md).
+ */
+fun interface BatteryController {
+    suspend fun setCharge(mac: String, on: Boolean): BatteryReading
+}
+
+class BluezController(private val ble: BluezBle, private val clock: () -> Long = System::currentTimeMillis) : BatteryController {
+    override suspend fun setCharge(mac: String, on: Boolean): BatteryReading {
+        val link = ble.connect(mac, writeUuid = JbdGatt.WRITE, notifyUuid = JbdGatt.NOTIFY)
+        try {
+            val client = JbdClient(link)
+            client.setFets(chargeOn = on)
+            return client.readSnapshot().toReading(clock(), link.rssi)
+        } finally {
+            link.close()
+        }
+    }
 }
 
 /** Finds nearby batteries. Real implementation: [BluezScanner]. */
@@ -90,6 +112,7 @@ class HubService(
     private val history: HistoryDb,
     private val reader: BatteryReader,
     private val scanner: BatteryScanner = BatteryScanner { emptyList() },
+    private val controller: BatteryController = BatteryController { _, _ -> error("No battery control in this hub") },
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     private val _state = MutableStateFlow(store.load())
@@ -189,6 +212,38 @@ class HubService(
             _statuses.update { it + (mac to PollStatus(PollStatus.State.FAILED, e.message ?: e.toString(), clock())) }
         }
         return result
+    }
+
+    /**
+     * Turns a favorite's charge MOSFET on or off, confirms it from a read-back, stores that reading, and logs the
+     * command whatever the outcome. Refuses batteries in a series group: a string must switch together (docs/safety.md
+     * rule 3), which isn't built yet. [source] is "user" or "profile".
+     */
+    suspend fun setCharge(mac: String, on: Boolean, source: String): Result<BatteryReading> {
+        val s = _state.value
+        val fav = s.favorites.firstOrNull { it.mac == mac } ?: throw NoSuchElementException("Not a favorite: $mac")
+        val group = s.groups.firstOrNull { it.id == fav.groupId }
+        require(group?.wiring != Wiring.SERIES) {
+            "${fav.nickname} is in a series group (${group?.name}); series strings must switch together, which isn't supported yet"
+        }
+        _statuses.update { it + (mac to PollStatus(PollStatus.State.REFRESHING, atMs = clock())) }
+        val result = radioLock.withLock { runCatching { controller.setCharge(mac, on) } }
+        result.onSuccess { r ->
+            if (r.chargeFetOn != on) return@onSuccess
+            history.record(mac, r)
+            mutate { it.withReading(mac, r) }
+        }
+        val checked = result.mapCatching { r ->
+            check(r.chargeFetOn == on) { "Read-back shows charge ${if (r.chargeFetOn) "on" else "off"}" }
+            r
+        }
+        history.recordCommand(
+            CommandRecord(clock(), mac, "charge ${if (on) "on" else "off"}", source, "hub", checked.exceptionOrNull()?.let { it.message ?: it.toString() } ?: "ok"),
+        )
+        _statuses.update {
+            it + (mac to checked.fold({ PollStatus(PollStatus.State.IDLE, atMs = clock()) }, { e -> PollStatus(PollStatus.State.FAILED, e.message, clock()) }))
+        }
+        return checked
     }
 
     suspend fun refreshAll() {

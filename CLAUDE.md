@@ -29,6 +29,11 @@ when decisions change. Start with `README.md` (doc map, build and install), `ROA
   discharge-to/charge-to threshold (default 0/100%, estimate-only, never sent to the BMS), from a 30 min rolling
   average of the BMS's remaining capacity (`StoredState.recent`). Built and unit-tested; screenshots of the dashboard checked.
   **Not yet installed** on the phone or the hub unless a later note says so.
+- **Battery writes** (2026-11-11): the charge MOSFET toggle (0xE1) was tested on Test 3 with the user's OK: off, then
+  back on, both confirmed by read-back and current (details in `docs/hardware/protocols/jbd.md`). Writes go through
+  `JbdClient.setFets` (core) → `HubService.setCharge` (refuses series groups, logs to the `commands` table) →
+  `battery-hub charge <name|MAC> on|off` (only with the service stopped; no HTTP control endpoint). Nothing writes
+  automatically yet. Discharge off has never been tried.
 - **Smaller gaps:** no Android background monitoring (it only polls while visible; needs a foreground service); no taper correction for estimates near full; no nested banks (2S2P);
   the hub has no continuous passive scanning.
 
@@ -61,7 +66,7 @@ when decisions change. Start with `README.md` (doc map, build and install), `ROA
 - Android SDK: project-local `.android-sdk/` (gitignored, along with `local.properties`). Recreate it with `tools/setup-android-sdk.sh`.
   compileSdk 37, minSdk 31. adb: `.android-sdk/platform-tools/adb`. Install: `./gradlew :app:installDebug` (phone over USB).
 - Hub: `tools/install-hub.sh` (stops the service, reinstalls, restarts). Manual: `./gradlew :hub:installDist`, then
-  `hub/build/install/battery-hub/bin/battery-hub serve|status|scan|refresh|add-favorite|import-phone|probe`.
+  `hub/build/install/battery-hub/bin/battery-hub serve|status|scan|refresh|thresholds|charge|log|add-favorite|import-phone|probe`.
   For experiments, run a second instance with `XDG_DATA_HOME=<scratch dir>` and `--port 8641` so the user's data isn't
   touched; stop the user's service first if you need the radio exclusively.
 - Dashboard screenshots: `firefox --headless --screenshot` fires before fetches finish, so load a harness copy of

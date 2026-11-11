@@ -29,7 +29,9 @@ import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.arguments.multiple
 import com.github.ajalt.clikt.parameters.arguments.optional
 import com.github.ajalt.clikt.parameters.options.default
+import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
+import com.github.ajalt.clikt.parameters.arguments.convert
 import com.github.ajalt.clikt.parameters.types.restrictTo
 import com.github.ajalt.clikt.parameters.types.int
 import io.ktor.server.cio.CIO
@@ -231,6 +233,87 @@ class Interval : CliktCommand() {
     }
 }
 
+class Charge : CliktCommand() {
+    private val target by argument(help = "A favorite's MAC or nickname")
+    private val state by argument(help = "on or off").convert {
+        when (it.lowercase()) {
+            "on" -> true
+            "off" -> false
+            else -> fail("Expected on or off, got: $it")
+        }
+    }
+    private val yes by option("--yes", help = "Don't ask for confirmation").flag()
+    private val adapter by option(help = "Bluetooth adapter").default("hci0")
+    private val url by option(help = "Hub URL (to check it isn't running)").default("http://127.0.0.1:$DEFAULT_PORT")
+
+    override fun help(context: com.github.ajalt.clikt.core.Context) =
+        "Turn a battery's charge MOSFET on or off, then read it back to confirm. Stop the hub service first " +
+            "(systemctl --user stop battery-hub): it holds the radio, and has no control API until pairing exists."
+
+    override fun run(): Unit = runBlocking {
+        if (runCatching { get("$url/api/settings") }.isSuccess) {
+            throw CliktError("The hub is running at $url. Stop it first: systemctl --user stop battery-hub")
+        }
+        val store = StateStore()
+        val s = store.load()
+        val fav = s.favorites.firstOrNull { it.mac.equals(target, ignoreCase = true) }
+            ?: s.favorites.filter { it.nickname.equals(target, ignoreCase = true) }.singleOrNull()
+            ?: throw CliktError("No single favorite matches \"$target\" (use its MAC if nicknames repeat)")
+        val what = if (state) "Turn charging ON for ${fav.nickname} (${fav.mac})?"
+        else "Turn charging OFF for ${fav.nickname} (${fav.mac})? It stops accepting charge until turned back on; loads keep power."
+        if (!yes) {
+            echo("$what [y/N] ", trailingNewline = false)
+            if (readlnOrNull()?.trim()?.lowercase() !in setOf("y", "yes")) throw CliktError("Cancelled")
+        }
+
+        HistoryDb().use { history ->
+            BluezBle(adapter).use { ble ->
+                val service = HubService(store, history, BluezReader(ble), controller = BluezController(ble))
+                try {
+                    service.setCharge(fav.mac, state, source = "user")
+                        .onSuccess { r ->
+                            echo(
+                                String.format(
+                                    Locale.US, "Done. %s: charge %s, discharge %s · %d%% · %.2f V · %+.1f A%s",
+                                    fav.nickname, if (r.chargeFetOn) "ON" else "OFF", if (r.dischargeFetOn) "ON" else "OFF",
+                                    r.stateOfChargePct, r.packVoltageMv / 1000.0, r.currentMa / 1000.0,
+                                    if (r.protections.isEmpty()) "" else " · " + r.protections.joinToString(),
+                                ),
+                            )
+                        }
+                        .onFailure { throw CliktError("Failed: ${it.message}") }
+                } catch (e: IllegalArgumentException) {
+                    throw CliktError(e.message)
+                } finally {
+                    if (ble.isConnected(fav.mac)) echo("WARNING: still connected to ${fav.mac}", err = true)
+                }
+            }
+        }
+    }
+}
+
+class CommandLog : CliktCommand(name = "log") {
+    private val limit by option(help = "How many").int().default(20)
+
+    override fun help(context: com.github.ajalt.clikt.core.Context) = "Show the log of commands sent to batteries, newest first."
+
+    override fun run() {
+        val names = StateStore().load().favorites.associate { it.mac to it.nickname }
+        HistoryDb().use { db ->
+            val rows = db.commands(limit)
+            if (rows.isEmpty()) echo("No commands sent yet.")
+            for (c in rows) {
+                echo(
+                    String.format(
+                        Locale.US, "%tF %<tT  %-12s %-12s %-7s %-5s %s",
+                        c.t, names[c.mac] ?: c.mac, c.command, c.source, c.node, c.result,
+                    ),
+                )
+            }
+        }
+    }
+}
+
 class Scan : CliktCommand() {
     private val seconds by option(help = "How long to search").int().default(15)
     private val url by option(help = "Hub URL").default("http://127.0.0.1:$DEFAULT_PORT")
@@ -357,4 +440,4 @@ private fun send(method: String, url: String, body: String) {
     if (res.statusCode() !in 200..299) throw CliktError("$method $url → ${res.statusCode()}: ${res.body()}")
 }
 
-fun main(args: Array<String>) = Hub().subcommands(Serve(), Status(), Refresh(), Interval(), Thresholds(), Scan(), ImportPhone(), AddFavorite(), Probe()).main(args)
+fun main(args: Array<String>) = Hub().subcommands(Serve(), Status(), Refresh(), Interval(), Thresholds(), Charge(), CommandLog(), Scan(), ImportPhone(), AddFavorite(), Probe()).main(args)

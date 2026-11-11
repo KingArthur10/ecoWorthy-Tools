@@ -5,7 +5,7 @@ Researched 2026-11-10. **Verify every row against the real batteries** before re
 | Capability | JBD (`DP04S…`, `JBD-…`) | BW02 (`ECO-WORTHY…`) | Redodo (`T-12…`) |
 |---|---|---|---|
 | Read SOC, voltage, current, cells, temps | Yes | Yes (aiobmsble) | Yes (aiobmsble) |
-| Charge/discharge MOSFET toggle | **Yes**: `DD 5A E1 02 00 <mode> <chk> 77`, with mode 0 = both on, 1 = charge off, 2 = discharge off, 3 = both off | Likely: the official app offers it. Protocol not yet documented, so it needs a capture | Unknown |
+| Charge/discharge MOSFET toggle | **Yes**: `DD 5A E1 02 00 <mode> <chk> 77`, with mode 0 = both on, 1 = charge off, 2 = discharge off, 3 = both off. **Charge toggle verified 2026-11-11**; discharge not yet tried | Likely: the official app offers it. Protocol not yet documented, so it needs a capture | Unknown |
 | Read protection parameters | Yes (EEPROM registers) | Unknown | Unknown |
 | Write protection parameters | Yes (factory mode, then register write). High risk | Unknown | Unknown |
 | Charge current limit | **No** on standard boards. Over-current protection is a trip point, not a limiter. Some JBD boards have an optional current-limit module; check by reading your battery's parameters | Unknown | Unknown |

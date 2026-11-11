@@ -35,6 +35,7 @@ import java.nio.file.Files
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
@@ -260,6 +261,37 @@ class HubServiceTest {
 
         // Saved to disk.
         assertEquals(listOf("Garage left"), StateStore(stateFile).load().favorites.map { it.nickname })
+    }
+
+    @Test
+    fun setChargeConfirmsLogsAndRefusesSeriesStrings() = runTest {
+        var fet = true
+        var obeys = true
+        StateStore(stateFile).save(
+            StoredState(
+                favorites = listOf(Favorite("A", "Solo"), Favorite("B", "In string", groupId = "s")),
+                groups = listOf(BatteryGroup("s", "String", Wiring.SERIES)),
+            ),
+        )
+        val svc = HubService(
+            StateStore(stateFile), history, { reading(50) },
+            controller = { _, on -> if (obeys) fet = on; reading(50).copy(chargeFetOn = fet) },
+            clock = { now },
+        )
+
+        val off = svc.setCharge("A", on = false, source = "user")
+        assertEquals(false, off.getOrThrow().chargeFetOn)
+        assertEquals(false, svc.state.value.readings["A"]!!.chargeFetOn)
+
+        obeys = false
+        assertTrue(svc.setCharge("A", on = true, source = "user").isFailure) // read-back disagrees
+        assertEquals(PollStatus.State.FAILED, svc.statuses.value["A"]!!.state)
+
+        assertFailsWith<IllegalArgumentException> { svc.setCharge("B", on = false, source = "user") }
+        assertEquals(
+            listOf("charge on" to "Read-back shows charge off", "charge off" to "ok"),
+            history.commands().map { it.command to it.result },
+        )
     }
 
     @Test

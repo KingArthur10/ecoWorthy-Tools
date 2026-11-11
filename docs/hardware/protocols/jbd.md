@@ -1,6 +1,7 @@
 # JBD / Xiaoxiang protocol
 
-**Verified against real hardware:** Reads verified 2026-11-10 (5 batteries, firmware 6.6). Writes not yet verified.
+**Verified against real hardware:** Reads verified 2026-11-10 (5 batteries, firmware 6.6). The charge MOSFET write (0xE1)
+verified 2026-11-11 on one battery (see "Write and control commands"). No other writes have been tried.
 
 ## Reference implementations
 - aiobmsble (Python): https://pypi.org/project/aiobmsble/
@@ -55,3 +56,18 @@ The extended block matched on all five batteries (for example `…2710 0C33…` 
 
 ## Captured traces
 Store raw captures in `docs/hardware/captures/` and link them here.
+
+## Write and control commands
+| Command | Bytes | Effect | Risk |
+|---|---|---|---|
+| 0xE1 MOSFET control | `DD 5A E1 02 00 <v> <chk_hi> <chk_lo> 77`; v bit 0 = charge off, bit 1 = discharge off (absolute: always send both) | Switches the MOSFETs; reply `DD E1 00 00 …` | Discharge off cuts loads. Charge off is low risk |
+
+**Verified 2026-11-11** on Test 3 (A5:C2:39:57:8B:35, fw 6.6, charging at +19.8 A, hub service stopped, `battery-hub charge`):
+- No factory mode needed. Charge off: `DD 5A E1 02 00 01 FF 1C 77`; on: `DD 5A E1 02 00 00 FF 1D 77`. The write followed a
+  read (the BMS ignores the first request after a connect), and the 0x03 read-back confirmed it.
+- After charge off: the 0x03 status byte shows charge off, discharge on, and protection bit 12
+  (`MOSFET_SOFTWARE_LOCK`) is set. The current read right after the switch was still +13.4 A (the BMS's current figure
+  lags a few seconds); 20 s later it was 0.0 A and the pack voltage was relaxing (13.53 → 13.35 V).
+- After charge on: the lock bit cleared, and 15 s later it was charging at +20.0 A again.
+- Not yet known: whether the software lock survives a BMS sleep or power cycle, and whether discharge off behaves the same.
+
