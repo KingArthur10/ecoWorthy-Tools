@@ -2,7 +2,8 @@
 
 ## Phase 0: Spec and hardware discovery
 - [x] Scan for the batteries: five JBD units found
-- [ ] Read-only probe of each battery: capacity, cells, and parameters, to fill in the inventory
+- [x] Read-only probe of each battery (basic info, cells, model). See `tools/jbd_probe.py`
+- [ ] Read the protection parameters (needs factory-mode entry, which is a write. Deferred until we design for it)
 - [ ] Spike: BlueZ BLE from the JVM (connect, read, and disconnect cleanly)
 - [ ] Optional: capture the official app's traffic for a MOSFET toggle, to confirm 0xE1 on these boards
 - [ ] Confirm the control capabilities table against real hardware
