@@ -4,7 +4,20 @@ An offline-first Android app and Linux hub for monitoring and controlling multip
 LiFePO4 batteries over Bluetooth. No accounts, no cloud. It works with zero connectivity
 during power outages and while camping.
 
-**Status:** Specification phase. No code yet.
+**Status:** Spec mostly done. The shared Kotlin core has a read-only JBD protocol driver, tested against real captures.
+
+## Build
+
+```
+./gradlew :core:jvmTest     # build the shared core and run its tests
+```
+On first run, Gradle downloads a JDK 21 toolchain if the system doesn't have one.
+
+## Code layout
+| Module | Contents |
+|---|---|
+| `core/` | Kotlin Multiplatform shared core. `protocol/jbd`: framing, frame reassembly, parsers, and a read-only client. `transport`: the `BleLink` interface that Android and BlueZ implement |
+| `tools/` | Dev tools (for example, the Python read-only probe) |
 
 ## Documentation map
 

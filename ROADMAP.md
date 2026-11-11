@@ -10,7 +10,8 @@
 - [x] Decide ADR 0001 (Kotlin Multiplatform)
 
 ## Phase 1: Read-only core
-- [ ] Shared protocol drivers (reads), tested against captured frames
+- [x] Shared JBD read driver (framing, reassembly, parsers, client with retries), tested against captured frames
+- [ ] Android target in `core` (needs the Android SDK)
 - [ ] Android: favorites, nicknames, fleet overview, cached detail, search, refresh (direct mode)
 - [ ] Polling cycle and cache
 
