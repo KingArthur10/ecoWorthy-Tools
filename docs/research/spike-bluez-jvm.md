@@ -44,6 +44,7 @@ battery weaker than about −80 dBm. The −60 dBm battery never failed.
    interval near a charge limit, poll only the batteries that need it, not all five.
 
 ## Open
-- The occasional missed first reply (one ~3 s retry). Possibly the first write is dropped right after the CCCD is enabled.
-  Try a short delay after `Notifying`, or switch to `AcquireNotify`.
+- ~~The occasional missed first reply~~. **Confirmed on Android too (2026-11-10)**, so it's the BMS, not BlueZ:
+  the battery often ignores the first request after connecting. Mitigation: the JbdClient response timeout dropped from 3 s
+  to 1 s (replies take about 75 ms), so the retry costs 1 s. A full Android refresh now takes about 2.3 s from connect to disconnect.
 - Test a USB Bluetooth adapter placed near the batteries.

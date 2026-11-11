@@ -30,7 +30,9 @@ data class JbdSnapshot(
 /** Read-only JBD client over an open [BleLink]. One request is in flight at a time. */
 class JbdClient(
     private val link: BleLink,
-    private val responseTimeout: Duration = 3.seconds,
+    // Replies arrive in ~75 ms. The BMS also tends to ignore the first request after connecting
+    // (seen on both BlueZ and Android), so a short timeout keeps that retry cheap.
+    private val responseTimeout: Duration = 1.seconds,
     private val attempts: Int = 3,
 ) {
     private val mutex = Mutex()

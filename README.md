@@ -4,7 +4,7 @@ An offline-first Android app and Linux hub for monitoring and controlling multip
 LiFePO4 batteries over Bluetooth. No accounts, no cloud. It works with zero connectivity
 during power outages and while camping.
 
-**Status:** Read-only MVP. The Android app (overview, favorites, nicknames, search, detail, refresh) builds but hasn't been tested on a phone yet. The Linux BLE spike works.
+**Status:** Read-only MVP. The Android app (overview, favorites, nicknames, search, detail, refresh) works on a real phone against the real batteries. The Linux BLE spike works.
 
 ## Build
 

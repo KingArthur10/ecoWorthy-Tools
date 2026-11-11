@@ -1,5 +1,6 @@
 package app.batterycommander.data
 
+import android.util.Log
 import app.batterycommander.ble.AndroidBle
 import app.batterycommander.ble.ScanHit
 import app.batterycommander.domain.BatteryReading
@@ -69,9 +70,13 @@ class BatteryRepository(
 
     // --- Favorites -------------------------------------------------------------------------
 
-    fun addFavorite(hit: ScanHit, nickname: String) = mutate { s ->
-        if (s.favorites.any { it.mac == hit.mac }) s
-        else s.copy(favorites = s.favorites + Favorite(mac = hit.mac, nickname = nickname.trim(), bleName = hit.name))
+    fun addFavorite(hit: ScanHit, nickname: String) {
+        mutate { s ->
+            if (s.favorites.any { it.mac == hit.mac }) s
+            else s.copy(favorites = s.favorites + Favorite(mac = hit.mac, nickname = nickname.trim(), bleName = hit.name))
+        }
+        // Read it right away rather than leaving "No data yet" until the next poll.
+        scope.launch { refresh(hit.mac) }
     }
 
     fun rename(mac: String, nickname: String) = mutate { s ->
@@ -158,9 +163,18 @@ class BatteryRepository(
 
     private val saveLock = Mutex()
 
+    private companion object {
+        const val TAG = "BatteryRepository"
+    }
+
     private fun mutate(change: (StoredState) -> StoredState) {
         state.update(change)
         // Save whatever is current when the lock is acquired, so saves can't land out of order.
-        scope.launch(Dispatchers.IO) { saveLock.withLock { store.save(state.value) } }
+        scope.launch(Dispatchers.IO) {
+            saveLock.withLock {
+                // A failed save must not crash the app; state stays in memory and the next change retries.
+                runCatching { store.save(state.value) }.onFailure { Log.e(TAG, "Saving favorites failed", it) }
+            }
+        }
     }
 }

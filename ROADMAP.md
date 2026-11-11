@@ -14,7 +14,7 @@
 - [x] Android target in `core` (project-local SDK, `tools/setup-android-sdk.sh`)
 - [x] Android: favorites, nicknames, fleet overview, cached detail, search, refresh (direct mode). Builds; **not yet tested on a phone**
 - [x] Polling cycle and cache (while the app is visible, refreshing readings older than 10 min)
-- [ ] Test on the Pixel over USB
+- [x] Test on the phone over USB (2026-11-10): search, identify, add favorite, poll, detail, and refresh all work
 - [ ] Settings screen (polling interval)
 
 ## Phase 2: Linux hub
