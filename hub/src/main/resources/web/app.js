@@ -201,11 +201,27 @@ function estimateSection(e, t, now) {
 function chargeLimitSection(f) {
   const limit = limitPct(f);
   const text = limit == null
-    ? `Off. The charge threshold is for estimates only. To enforce it: <code>battery-hub charge-limit "${esc(f.nickname)}" on</code>`
+    ? "Off. The charge threshold is only used for time estimates."
     : limit === 100
-      ? "On, but the charge threshold is 100%, so the hub never stops charging."
+      ? "On, but the charge threshold is 100%, so the hub never stops charging. Set a lower one with Thresholds…"
       : `On. The hub turns the charge switch off at ${limit}% and back on at ${limit - RESUME_GAP}%. Loads keep power. Every switch is logged (<code>battery-hub log</code>).`;
-  return `<section class="card"><strong>Charge limit</strong><p class="small">${text}</p></section>`;
+  return `<section class="card"><div class="card-head"><strong class="name">Charge limit</strong>
+      <button type="button" id="detail-charge-limit">${f.chargeLimit ? "Turn off…" : "Turn on…"}</button></div>
+    <p class="small">${text}</p></section>`;
+}
+
+/** Confirms, naming the battery (docs/safety.md rule 2), then turns its charge limit on or off. */
+async function toggleChargeLimit(f) {
+  const limit = f.thresholds?.chargeToPct ?? 100;
+  const enabling = !f.chargeLimit;
+  const message = enabling
+    ? limit === 100
+      ? `Its charge threshold is 100%, so nothing will happen until you set a lower one with Thresholds…`
+      : `The hub will turn ${f.nickname}'s charge switch off at ${limit}% and back on at ${limit - RESUME_GAP}%. ` +
+        `If it's at or above ${limit}% now, charging stops within about a minute. Loads keep power.`
+    : `The hub will stop managing ${f.nickname}'s charging. If it's holding it at the limit, charging resumes within about a minute.`;
+  if (!(await confirmAction(`${enabling ? "Turn on" : "Turn off"} charge limit for ${f.nickname}`, message, enabling ? "Turn on" : "Turn off"))) return;
+  return act(() => api("PUT", `/api/favorites/${encodeURIComponent(f.mac)}/charge-limit`, { enabled: enabling }));
 }
 
 let historyCache = { mac: null, at: 0, points: [] };
@@ -259,6 +275,7 @@ async function renderDetail() {
     html += `<p>No data yet. Click Refresh now.</p>`;
   }
   $("#detail-body").innerHTML = html;
+  $("#detail-charge-limit")?.addEventListener("click", () => toggleChargeLimit(b.favorite));
   $("#detail-thresholds")?.addEventListener("click", () => editThresholds(`/api/favorites/${encodeURIComponent(openMac)}/thresholds`, b.favorite.nickname, b.favorite.thresholds, b.favorite.chargeLimit));
   if (r) {
     const points = await loadHistory(openMac);
@@ -386,6 +403,7 @@ async function batteryActions(mac) {
     { label: "Rename…", value: "rename" },
     { label: "Group…", value: "group" },
     { label: "Thresholds…", value: "thresholds" },
+    { label: b.favorite.chargeLimit ? "Turn charge limit off…" : "Turn charge limit on…", value: "limit" },
     { label: "Move up", value: "up" },
     { label: "Move down", value: "down" },
     { label: "Remove from favorites…", value: "remove", cls: "danger" },
@@ -402,6 +420,7 @@ async function batteryActions(mac) {
     case "thresholds": return editThresholds(`/api/favorites/${enc}/thresholds`, name, b.favorite.thresholds, b.favorite.chargeLimit);
     case "up": return act(() => api("POST", `/api/favorites/${enc}/move`, { delta: -1 }));
     case "down": return act(() => api("POST", `/api/favorites/${enc}/move`, { delta: 1 }));
+    case "limit": return toggleChargeLimit(b.favorite);
     case "remove":
       if (await confirmAction("Remove favorite", `Stop tracking "${name}"? Its history stays on disk.`, "Remove")) {
         return act(() => api("DELETE", `/api/favorites/${enc}`));

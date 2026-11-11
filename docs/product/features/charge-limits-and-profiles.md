@@ -8,11 +8,10 @@ Keep batteries around 60% day to day to extend their life, top them up to 100% b
 and never drain below a reserve (for example, 10%).
 
 ## Implemented (2026-11-11): charge limit, enforced by the hub
-- **Opt-in per battery:** `battery-hub charge-limit <battery> on|off`. The limit is the battery's own *charge to*
-  threshold (the one the time estimates use; `battery-hub thresholds <battery> --charge-to N` or the dashboard).
-  Batteries without it stay estimate-only. The on/off switch is CLI-only for now: the web API has no
-  authentication, so it gets no battery-control endpoints until pairing exists (CLAUDE.md rules). Changing the level
-  of a limited battery from the dashboard does take effect.
+- **Opt-in per battery:** the dashboard (battery menu → *Turn charge limit on…*, or the detail view) or
+  `battery-hub charge-limit <battery> on|off`. The limit is the battery's own *charge to* threshold (the one the time
+  estimates use). Batteries without it stay estimate-only. The web API has no authentication yet; the user agreed
+  (2026-11-11) to this one control endpoint behind the existing localhost guards (Host check and CSRF header).
 - **Rule** (`core/.../domain/ChargeLimit.kt`, checked after every hub reading): charge switch **off** at SOC ≥ limit;
   back **on** at limit − 5%. Raising the limit above the current SOC, or turning the limit off, resumes charging on
   the next pass (within ~30 s). Only the charge switch is touched; loads keep power.

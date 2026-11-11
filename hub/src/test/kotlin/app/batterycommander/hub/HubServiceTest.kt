@@ -170,6 +170,18 @@ class HubServiceTest {
         assertEquals(HttpStatusCode.BadRequest, put("/api/thresholds", """{"dischargeToPct":90,"chargeToPct":80}""").status)
         assertEquals(HttpStatusCode.NotFound, put("/api/groups/nope/thresholds", "{}").status)
 
+        // The charge-limit switch: guarded like every other change, refused for series members and unknown batteries.
+        assertEquals(HttpStatusCode.Forbidden, client.request("/api/favorites/A5:C2:39:57:73:E3/charge-limit") {
+            method = HttpMethod.Put; contentType(ContentType.Application.Json); setBody("""{"enabled":true}""")
+        }.status)
+        assertEquals(false, svc.state.value.favorites.single().chargeLimit)
+        assertEquals(HttpStatusCode.NoContent, put("/api/favorites/A5:C2:39:57:73:E3/charge-limit", """{"enabled":true}""").status)
+        assertEquals(true, svc.state.value.favorites.single().chargeLimit)
+        assertEquals(HttpStatusCode.NotFound, put("/api/favorites/A5:C2:00:00:00:00/charge-limit", """{"enabled":true}""").status)
+        assertEquals(HttpStatusCode.NoContent, put("/api/favorites/A5:C2:39:57:73:E3/charge-limit", """{"enabled":false}""").status)
+        svc.updateGroup("g", null, Wiring.SERIES)
+        assertEquals(HttpStatusCode.BadRequest, put("/api/favorites/A5:C2:39:57:73:E3/charge-limit", """{"enabled":true}""").status)
+
         val o = json.decodeFromString<OverviewDto>(client.get("/api/overview").bodyAsText())
         val e = o.batteries.getValue("A5:C2:39:57:73:E3").estimate!!
         assertEquals(-10_000, e.rateMa)

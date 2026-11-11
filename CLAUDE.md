@@ -35,7 +35,7 @@ when decisions change. Start with `README.md` (doc map, build and install), `ROA
   `battery-hub charge <name|MAC> on|off` (only with the service stopped; no HTTP control endpoint). Discharge off has
   never been tried.
 - **Charge limit** (2026-11-11, `ChargeLimit.kt`, `charge-limits-and-profiles.md`): opt-in per battery with
-  `battery-hub charge-limit <battery> on|off` (CLI only, by the rules above); the hub turns charge off at the battery's
+  `battery-hub charge-limit <battery> on|off` or the dashboard (battery menu or detail view); the hub turns charge off at the battery's
   charge-to threshold and on 5% below, polling every minute near it. Tested live on Test 3 (the only battery with it on).
 - **Smaller gaps:** no Android background monitoring (it only polls while visible; needs a foreground service); no taper correction for estimates near full; no nested banks (2S2P);
   the hub has no continuous passive scanning.
@@ -58,7 +58,9 @@ when decisions change. Start with `README.md` (doc map, build and install), `ROA
   commands; writes must be a separate, deliberate API.
 - Hub API: unauthenticated and bound to localhost. Every request must carry an allowed Host header (stops DNS
   rebinding), and every non-GET needs `X-Battery-Hub: 1` (stops CSRF). Config edits are allowed; **battery-state-changing
-  endpoints are not allowed until pairing/auth exists** (local-only control behind the same guards would need the user's agreement).
+  endpoints are not allowed until pairing/auth exists**. The one exception, agreed with the user 2026-11-11: turning a
+  battery's charge limit on/off (`PUT /api/favorites/{mac}/charge-limit`), which the hub then enforces. Anything
+  further needs the user's agreement again.
 - Shared logic belongs in `core/src/commonMain`: protocol, `domain/` (BatteryReading, aggregate(), StoredState +
   summarize(), FleetEdits rules). Don't reimplement it per platform.
 - Requirement IDs in `docs/product/requirements.md` are stable. Never renumber them. Record decisions as ADRs in `docs/decisions/`.

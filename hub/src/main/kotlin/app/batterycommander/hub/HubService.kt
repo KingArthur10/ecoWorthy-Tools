@@ -197,7 +197,7 @@ class HubService(
 
     /** Turns the charge limit on or off for one battery; it's checked on the next poll pass (within ~30 s). */
     fun setChargeLimit(mac: String, enabled: Boolean) {
-        mutate { it.setChargeLimit(mac, enabled) }
+        mutate { requireFavorite(it, mac).setChargeLimit(mac, enabled) }
         rearmed += mac
     }
 

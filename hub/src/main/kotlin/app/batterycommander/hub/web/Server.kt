@@ -106,6 +106,9 @@ data class ThresholdsRequest(val dischargeToPct: Int? = null, val chargeToPct: I
 }
 
 @Serializable
+data class ChargeLimitRequest(val enabled: Boolean)
+
+@Serializable
 data class ErrorDto(val error: String)
 
 /** Header every state-changing request must carry. Other websites can't add it to a request to us. */
@@ -116,7 +119,8 @@ val LOOPBACK_HOSTS = setOf("localhost", "127.0.0.1", "::1")
 
 /**
  * JSON API plus the static dashboard (resources/web). It changes configuration (favorites,
- * groups, estimate thresholds) but never battery state: there's no authentication yet, so control endpoints wait
+ * groups, estimate thresholds) and turns a battery's charge limit on or off, which the hub then enforces with the
+ * charge switch (agreed with the user 2026-11-11). Nothing else here changes battery state: direct control waits
  * for pairing (docs/safety.md).
  *
  * Guards: requests must name an allowed Host (stops DNS rebinding), and anything other than
@@ -219,6 +223,11 @@ fun Application.hubModule(
         }
         put("/api/favorites/{mac}/thresholds") {
             service.setFavoriteThresholds(call.parameters["mac"]!!, call.receive<ThresholdsRequest>().validated())
+            call.respond(HttpStatusCode.NoContent)
+        }
+        // The only endpoint that leads to battery writes (the hub's charge limit), agreed with the user 2026-11-11.
+        put("/api/favorites/{mac}/charge-limit") {
+            service.setChargeLimit(call.parameters["mac"]!!, call.receive<ChargeLimitRequest>().enabled)
             call.respond(HttpStatusCode.NoContent)
         }
         delete("/api/favorites/{mac}") {
