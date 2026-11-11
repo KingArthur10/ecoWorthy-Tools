@@ -21,6 +21,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import app.batterycommander.domain.BatteryReading
 import app.batterycommander.domain.PowerFlow
+import app.batterycommander.domain.Wiring
 import app.batterycommander.domain.signalBars
 import kotlinx.coroutines.delay
 import java.util.Locale
@@ -70,6 +71,20 @@ fun cellVolts(mv: Int): String = String.format(Locale.US, "%.3f V", mv / 1000.0)
 fun amps(ma: Int): String = String.format(Locale.US, "%+.1f A", ma / 1000.0)
 fun watts(mw: Long): String = String.format(Locale.US, "%+.0f W", mw / 1000.0)
 fun ampHours(mah: Int): String = String.format(Locale.US, "%.1f Ah", mah / 1000.0)
+/** Ah without trailing noise: "68.9 Ah" under 100, "412 Ah" above. */
+fun ah(mah: Int): String =
+    if (mah < 100_000) String.format(Locale.US, "%.1f Ah", mah / 1000.0) else "${(mah + 500) / 1000} Ah"
+
+/** "880 Wh" or "7.23 kWh". */
+fun energy(mwh: Long): String =
+    if (mwh < 1_000_000) "${(mwh + 500) / 1000} Wh" else String.format(Locale.US, "%.2f kWh", mwh / 1_000_000.0)
+
+fun wiringLabel(w: Wiring): String = when (w) {
+    Wiring.PARALLEL -> "Parallel"
+    Wiring.SERIES -> "Series"
+    Wiring.NONE -> "Not wired together"
+}
+
 fun celsius(deci: Int): String = String.format(Locale.US, "%.1f °C", deci / 10.0)
 
 fun flowLabel(r: BatteryReading): String = when {

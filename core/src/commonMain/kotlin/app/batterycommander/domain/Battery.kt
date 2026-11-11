@@ -13,6 +13,8 @@ data class Favorite(
     val bleName: String? = null,
     val protocol: Protocol = Protocol.JBD,
     val notes: String = "",
+    /** [BatteryGroup.id] this battery belongs to, if any. */
+    val groupId: String? = null,
 )
 
 @Serializable

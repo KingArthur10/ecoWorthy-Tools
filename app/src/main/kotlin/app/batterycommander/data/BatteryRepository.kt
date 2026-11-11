@@ -3,8 +3,12 @@ package app.batterycommander.data
 import android.util.Log
 import app.batterycommander.ble.AndroidBle
 import app.batterycommander.ble.ScanHit
+import app.batterycommander.domain.AggregateStats
+import app.batterycommander.domain.BatteryGroup
 import app.batterycommander.domain.BatteryReading
 import app.batterycommander.domain.Favorite
+import app.batterycommander.domain.Wiring
+import app.batterycommander.domain.aggregate
 import app.batterycommander.domain.toReading
 import app.batterycommander.protocol.jbd.JbdClient
 import app.batterycommander.protocol.jbd.JbdGatt
@@ -17,12 +21,14 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
+import java.util.UUID
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
@@ -34,6 +40,16 @@ sealed interface RefreshStatus {
 }
 
 data class BatteryUi(val favorite: Favorite, val reading: BatteryReading?, val status: RefreshStatus)
+
+data class GroupUi(val group: BatteryGroup, val members: List<BatteryUi>, val stats: AggregateStats?)
+
+/** Everything the overview screen shows, in display order. */
+data class Overview(
+    /** Totals across every favorite; null until at least one has a reading. */
+    val total: AggregateStats?,
+    val groups: List<GroupUi>,
+    val ungrouped: List<BatteryUi>,
+)
 
 /**
  * Favorites, their cached readings, discovery, and polling. One BLE operation runs at a time:
@@ -52,6 +68,21 @@ class BatteryRepository(
     val batteries: StateFlow<List<BatteryUi>> = combine(state, statuses) { s, st ->
         s.favorites.map { BatteryUi(it, s.readings[it.mac], st[it.mac] ?: RefreshStatus.Idle) }
     }.stateIn(scope, SharingStarted.Eagerly, emptyList())
+
+    val groups: StateFlow<List<BatteryGroup>> = state.map { it.groups }.stateIn(scope, SharingStarted.Eagerly, emptyList())
+
+    val overview: StateFlow<Overview> = combine(batteries, groups) { all, groups ->
+        val known = groups.map { it.id }.toSet()
+        Overview(
+            // "All batteries" aren't one bank, so only energy and Ah totals are meaningful.
+            total = aggregate(all.map { it.reading }, Wiring.NONE),
+            groups = groups.map { g ->
+                val members = all.filter { it.favorite.groupId == g.id }
+                GroupUi(g, members, aggregate(members.map { it.reading }, g.wiring))
+            },
+            ungrouped = all.filter { it.favorite.groupId == null || it.favorite.groupId !in known },
+        )
+    }.stateIn(scope, SharingStarted.Eagerly, Overview(null, emptyList(), emptyList()))
 
     private val _discovered = MutableStateFlow<List<ScanHit>>(emptyList())
 
@@ -93,6 +124,36 @@ class BatteryRepository(
         val from = list.indexOfFirst { it.mac == mac }
         val to = (from + delta).coerceIn(0, list.lastIndex)
         if (from < 0 || from == to) s else s.copy(favorites = list.apply { add(to, removeAt(from)) })
+    }
+
+    // --- Groups ----------------------------------------------------------------------------
+
+    /** Creates a group and returns its id. */
+    fun createGroup(name: String, wiring: Wiring): String {
+        val id = UUID.randomUUID().toString()
+        mutate { it.copy(groups = it.groups + BatteryGroup(id, name.trim(), wiring)) }
+        return id
+    }
+
+    fun renameGroup(id: String, name: String) = mutate { s ->
+        s.copy(groups = s.groups.map { if (it.id == id) it.copy(name = name.trim()) else it })
+    }
+
+    fun setWiring(id: String, wiring: Wiring) = mutate { s ->
+        s.copy(groups = s.groups.map { if (it.id == id) it.copy(wiring = wiring) else it })
+    }
+
+    /** Deletes the group; its batteries become ungrouped (they stay favorites). */
+    fun deleteGroup(id: String) = mutate { s ->
+        s.copy(
+            groups = s.groups.filterNot { it.id == id },
+            favorites = s.favorites.map { if (it.groupId == id) it.copy(groupId = null) else it },
+        )
+    }
+
+    /** Puts a battery in a group, or takes it out with null. A battery is in at most one group. */
+    fun assignGroup(mac: String, groupId: String?) = mutate { s ->
+        s.copy(favorites = s.favorites.map { if (it.mac == mac) it.copy(groupId = groupId) else it })
     }
 
     // --- Search ----------------------------------------------------------------------------

@@ -15,12 +15,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -31,6 +33,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -43,21 +46,30 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.batterycommander.ble.ScanHit
 import app.batterycommander.data.BatteryRepository
 import app.batterycommander.data.BatteryUi
+import app.batterycommander.data.GroupUi
 import app.batterycommander.data.RefreshStatus
+import app.batterycommander.domain.AggregateStats
+import app.batterycommander.domain.BatteryGroup
 import app.batterycommander.domain.BatteryReading
+import app.batterycommander.domain.Wiring
+import app.batterycommander.domain.capacityMah
 import app.batterycommander.domain.formatAge
+import app.batterycommander.domain.nominalVoltageMv
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OverviewScreen(repo: BatteryRepository, onOpen: (String) -> Unit) {
     val batteries by repo.batteries.collectAsStateWithLifecycle()
+    val overview by repo.overview.collectAsStateWithLifecycle()
+    val groups by repo.groups.collectAsStateWithLifecycle()
     val discovered by repo.discovered.collectAsStateWithLifecycle()
     val searching by repo.searching.collectAsStateWithLifecycle()
     val now = rememberNow()
@@ -67,6 +79,23 @@ fun OverviewScreen(repo: BatteryRepository, onOpen: (String) -> Unit) {
     var renaming by remember { mutableStateOf<BatteryUi?>(null) }
     var identifying by remember { mutableStateOf<ScanHit?>(null) }
     var identifyResult by remember { mutableStateOf<Result<BatteryReading>?>(null) }
+    var pickingGroupFor by remember { mutableStateOf<BatteryUi?>(null) }
+    var newGroupFor by remember { mutableStateOf<BatteryUi?>(null) }
+    var renamingGroup by remember { mutableStateOf<BatteryGroup?>(null) }
+    var rewiringGroup by remember { mutableStateOf<BatteryGroup?>(null) }
+
+    val favoriteCard: @Composable (BatteryUi) -> Unit = { b ->
+        FavoriteCard(
+            b, now,
+            onOpen = { onOpen(b.favorite.mac) },
+            onRefresh = { scope.launch { repo.refresh(b.favorite.mac) } },
+            onRename = { renaming = b },
+            onGroup = { pickingGroupFor = b },
+            onMoveUp = { repo.move(b.favorite.mac, -1) },
+            onMoveDown = { repo.move(b.favorite.mac, +1) },
+            onRemove = { repo.remove(b.favorite.mac) },
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -93,24 +122,30 @@ fun OverviewScreen(repo: BatteryRepository, onOpen: (String) -> Unit) {
                     )
                 }
             }
-            items(batteries, key = { it.favorite.mac }) { b ->
-                FavoriteCard(
-                    b, now,
-                    onOpen = { onOpen(b.favorite.mac) },
-                    onRefresh = { scope.launch { repo.refresh(b.favorite.mac) } },
-                    onRename = { renaming = b },
-                    onMoveUp = { repo.move(b.favorite.mac, -1) },
-                    onMoveDown = { repo.move(b.favorite.mac, +1) },
-                    onRemove = { repo.remove(b.favorite.mac) },
-                )
+            val total = overview.total
+            if (batteries.size >= 2 && total != null) {
+                item(key = "total") { TotalCard("All batteries", total, now) }
             }
+            for (g in overview.groups) {
+                item(key = "g-" + g.group.id) {
+                    GroupCard(
+                        g, now,
+                        onRename = { renamingGroup = g.group },
+                        onRewire = { rewiringGroup = g.group },
+                        onDelete = { repo.deleteGroup(g.group.id) },
+                    )
+                }
+                items(g.members, key = { it.favorite.mac }) { b ->
+                    Box(Modifier.padding(start = 16.dp)) { favoriteCard(b) }
+                }
+            }
+            if (overview.groups.isNotEmpty() && overview.ungrouped.isNotEmpty()) {
+                item(key = "ungrouped-header") { SectionHeader("Not in a group") }
+            }
+            items(overview.ungrouped, key = { it.favorite.mac }) { favoriteCard(it) }
             if (searching || discovered.isNotEmpty()) {
                 item(key = "discovered-header") {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
-                        Text("Discovered", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                        if (searching) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-                    }
-                    HorizontalDivider(Modifier.padding(top = 4.dp))
+                    SectionHeader("Discovered", busy = searching)
                 }
                 items(discovered, key = { "d-" + it.mac }) { hit ->
                     DiscoveredRow(
@@ -141,6 +176,49 @@ fun OverviewScreen(repo: BatteryRepository, onOpen: (String) -> Unit) {
             initial = b.favorite.nickname,
             onDismiss = { renaming = null },
             onConfirm = { repo.rename(b.favorite.mac, it); renaming = null },
+        )
+    }
+    pickingGroupFor?.let { b ->
+        GroupPickerDialog(
+            groups = groups,
+            current = b.favorite.groupId,
+            onDismiss = { pickingGroupFor = null },
+            onPick = { repo.assignGroup(b.favorite.mac, it); pickingGroupFor = null },
+            onNew = { newGroupFor = b; pickingGroupFor = null },
+        )
+    }
+    newGroupFor?.let { b ->
+        GroupDialog(
+            title = "New group",
+            initialName = "",
+            initialWiring = Wiring.PARALLEL,
+            onDismiss = { newGroupFor = null },
+            onConfirm = { name, wiring ->
+                repo.assignGroup(b.favorite.mac, repo.createGroup(name, wiring))
+                newGroupFor = null
+            },
+        )
+    }
+    renamingGroup?.let { g ->
+        NicknameDialog(
+            title = "Rename group",
+            initial = g.name,
+            label = "Group name",
+            onDismiss = { renamingGroup = null },
+            onConfirm = { repo.renameGroup(g.id, it); renamingGroup = null },
+        )
+    }
+    rewiringGroup?.let { g ->
+        GroupDialog(
+            title = "Group wiring",
+            initialName = g.name,
+            initialWiring = g.wiring,
+            onDismiss = { rewiringGroup = null },
+            onConfirm = { name, wiring ->
+                repo.renameGroup(g.id, name)
+                repo.setWiring(g.id, wiring)
+                rewiringGroup = null
+            },
         )
     }
     identifying?.let { hit ->
@@ -179,6 +257,7 @@ private fun FavoriteCard(
     onOpen: () -> Unit,
     onRefresh: () -> Unit,
     onRename: () -> Unit,
+    onGroup: () -> Unit,
     onMoveUp: () -> Unit,
     onMoveDown: () -> Unit,
     onRemove: () -> Unit,
@@ -207,6 +286,12 @@ private fun FavoriteCard(
                         r.temperaturesDeciC.firstOrNull()?.let { Text(celsius(it), modifier = Modifier.padding(bottom = 4.dp)) }
                     }
                     LinearProgressIndicator(progress = { r.stateOfChargePct / 100f }, modifier = Modifier.fillMaxWidth())
+                    Text(
+                        "${ah(r.remainingCapacityMah)} of ${ah(r.capacityMah)} · " +
+                            "${energy(r.remainingCapacityMah.toLong() * r.nominalVoltageMv / 1000)} of " +
+                            energy(r.capacityMah.toLong() * r.nominalVoltageMv / 1000),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
                 }
                 StatusLine(b, now)
             }
@@ -214,6 +299,7 @@ private fun FavoriteCard(
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
             DropdownMenuItem(text = { Text("Refresh now") }, onClick = { menu = false; onRefresh() })
             DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; onRename() })
+            DropdownMenuItem(text = { Text("Group…") }, onClick = { menu = false; onGroup() })
             DropdownMenuItem(text = { Text("Move up") }, onClick = { menu = false; onMoveUp() })
             DropdownMenuItem(text = { Text("Move down") }, onClick = { menu = false; onMoveDown() })
             DropdownMenuItem(text = { Text("Remove from favorites") }, onClick = { menu = false; onRemove() })
@@ -268,15 +354,170 @@ private fun DiscoveredRow(hit: ScanHit, onAdd: () -> Unit, onIdentify: () -> Uni
 }
 
 @Composable
-fun NicknameDialog(title: String, initial: String, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+fun NicknameDialog(
+    title: String,
+    initial: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit,
+    label: String = "Nickname",
+) {
     var text by remember { mutableStateOf(initial) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
-            OutlinedTextField(text, { text = it }, label = { Text("Nickname") }, singleLine = true)
+            OutlinedTextField(text, { text = it }, label = { Text(label) }, singleLine = true)
         },
         confirmButton = { TextButton(onClick = { onConfirm(text) }, enabled = text.isNotBlank()) { Text("Save") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+}
+
+@Composable
+private fun SectionHeader(title: String, busy: Boolean = false) {
+    Column(Modifier.padding(top = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+            if (busy) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+        }
+        HorizontalDivider(Modifier.padding(top = 4.dp))
+    }
+}
+
+/** Totals for every favorite. */
+@Composable
+private fun TotalCard(title: String, stats: AggregateStats, now: Long) {
+    Card(
+        Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            AggregateBody(stats, now)
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun GroupCard(g: GroupUi, now: Long, onRename: () -> Unit, onRewire: () -> Unit, onDelete: () -> Unit) {
+    var menu by remember { mutableStateOf(false) }
+    Box(Modifier.padding(top = 8.dp)) {
+        Card(
+            Modifier.fillMaxWidth().combinedClickable(onClick = { menu = true }, onLongClick = { menu = true }),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+        ) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        g.group.name, style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f),
+                    )
+                    Text(wiringLabel(g.group.wiring), style = MaterialTheme.typography.labelMedium)
+                }
+                when {
+                    g.members.isEmpty() -> Text("No batteries yet. Long-press a battery → Group…", style = MaterialTheme.typography.bodySmall)
+                    g.stats == null -> Text("No data yet", style = MaterialTheme.typography.bodySmall)
+                    else -> AggregateBody(g.stats, now)
+                }
+            }
+        }
+        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            DropdownMenuItem(text = { Text("Rename group") }, onClick = { menu = false; onRename() })
+            DropdownMenuItem(text = { Text("Change wiring") }, onClick = { menu = false; onRewire() })
+            DropdownMenuItem(text = { Text("Delete group") }, onClick = { menu = false; onDelete() })
+        }
+    }
+}
+
+@Composable
+private fun AggregateBody(s: AggregateStats, now: Long) {
+    Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("${s.stateOfChargePct}%", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        Text("${ah(s.remainingMah)} of ${ah(s.capacityMah)}", modifier = Modifier.padding(bottom = 4.dp))
+    }
+    LinearProgressIndicator(progress = { s.stateOfChargePct / 100f }, modifier = Modifier.fillMaxWidth())
+    Text(
+        buildList {
+            add("${energy(s.energyRemainingMwh)} of ${energy(s.energyCapacityMwh)}")
+            s.voltageMv?.let { add(volts(it)) }
+            s.currentMa?.let { add(amps(it)) }
+            add(watts(s.powerMw))
+        }.joinToString(" · "),
+        style = MaterialTheme.typography.bodyMedium,
+    )
+    val count = if (s.batteryCount == 1) "1 battery" else "${s.batteryCount} batteries"
+    Text(
+        if (s.isPartial) "$count · only ${s.reportingCount} have data · oldest ${formatAge(now, s.oldestReadingMs)}"
+        else "$count · oldest data ${formatAge(now, s.oldestReadingMs)}",
+        style = MaterialTheme.typography.bodySmall,
+        color = if (s.isPartial) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+@Composable
+private fun GroupPickerDialog(
+    groups: List<BatteryGroup>,
+    current: String?,
+    onDismiss: () -> Unit,
+    onPick: (String?) -> Unit,
+    onNew: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Group") },
+        text = {
+            Column {
+                for (g in groups) {
+                    RadioRow("${g.name} (${wiringLabel(g.wiring).lowercase()})", selected = g.id == current) { onPick(g.id) }
+                }
+                RadioRow("No group", selected = current == null) { onPick(null) }
+                TextButton(onClick = onNew) { Text("New group…") }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+@Composable
+private fun GroupDialog(
+    title: String,
+    initialName: String,
+    initialWiring: Wiring,
+    onDismiss: () -> Unit,
+    onConfirm: (String, Wiring) -> Unit,
+) {
+    var name by remember { mutableStateOf(initialName) }
+    var wiring by remember { mutableStateOf(initialWiring) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(name, { name = it }, label = { Text("Group name") }, singleLine = true)
+                Text("How are these batteries wired?", style = MaterialTheme.typography.labelLarge)
+                for (w in Wiring.entries) RadioRow(wiringLabel(w), selected = w == wiring) { wiring = w }
+                Text(
+                    "Parallel adds amp-hours. Series adds voltage, and the weakest battery sets the amp-hours. " +
+                        "Energy (kWh) adds up either way.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = { onConfirm(name, wiring) }, enabled = name.isNotBlank()) { Text("Save") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+@Composable
+private fun RadioRow(label: String, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().selectable(selected = selected, onClick = onClick, role = Role.RadioButton).padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RadioButton(selected = selected, onClick = null)
+        Spacer(Modifier.width(8.dp))
+        Text(label)
+    }
 }
