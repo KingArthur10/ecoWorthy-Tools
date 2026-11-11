@@ -11,7 +11,7 @@
 
 ## Phase 1: Read-only core
 - [x] Shared JBD read driver (framing, reassembly, parsers, client with retries), tested against captured frames
-- [ ] Android target in `core` (needs the Android SDK)
+- [x] Android target in `core` (project-local SDK, `tools/setup-android-sdk.sh`)
 - [ ] Android: favorites, nicknames, fleet overview, cached detail, search, refresh (direct mode)
 - [ ] Polling cycle and cache
 

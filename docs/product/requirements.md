@@ -99,7 +99,7 @@ Priority: **M** = must (MVP), **S** = should, **C** = could.
 |---|---|
 | NFR-001 | Every core feature works with no internet. The hub needs the LAN only |
 | NFR-002 | No account, login, or cloud dependency. Pairing with the hub uses a local one-time code |
-| NFR-003 | Android: runs on the Pixel 11 Pro (minimum SDK TBD). Linux: runs on any distribution with BlueZ (Fedora, Ubuntu, Raspberry Pi OS) |
+| NFR-003 | Android: runs on the Pixel 11 Pro. minSdk 31 (Android 12, where the BLUETOOTH_SCAN/CONNECT permissions start), compileSdk 37. Linux: runs on any distribution with BlueZ (Fedora, Ubuntu, Raspberry Pi OS) |
 | NFR-004 | Android background monitoring keeps phone battery drain low (target TBD) |
 | NFR-005 | Every BLE session ends in a clean disconnect |
 | NFR-006 | No analytics or telemetry |

@@ -9,9 +9,12 @@ during power outages and while camping.
 ## Build
 
 ```
+tools/setup-android-sdk.sh  # one time: project-local Android SDK in .android-sdk/ (gitignored, about 1 GB)
 ./gradlew :core:jvmTest     # build the shared core and run its tests
+./gradlew :core:assemble    # also builds the Android library
 ```
 On first run, Gradle downloads a JDK 21 toolchain if the system doesn't have one.
+The SDK and `local.properties` (which points Gradle at it) are machine-specific and never committed.
 
 ## Code layout
 | Module | Contents |
