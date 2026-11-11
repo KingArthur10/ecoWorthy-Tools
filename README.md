@@ -4,7 +4,7 @@ An offline-first Android app and Linux hub for monitoring and controlling multip
 LiFePO4 batteries over Bluetooth. No accounts, no cloud. It works with zero connectivity
 during power outages and while camping.
 
-**Status:** Spec mostly done. The shared Kotlin core has a read-only JBD protocol driver, tested against real captures.
+**Status:** Read-only MVP. The Android app (overview, favorites, nicknames, search, detail, refresh) builds but hasn't been tested on a phone yet. The Linux BLE spike works.
 
 ## Build
 
@@ -12,7 +12,14 @@ during power outages and while camping.
 tools/setup-android-sdk.sh  # one time: project-local Android SDK in .android-sdk/ (gitignored, about 1 GB)
 ./gradlew :core:jvmTest     # build the shared core and run its tests
 ./gradlew :core:assemble    # also builds the Android library
+./gradlew :app:assembleDebug  # Android app → app/build/outputs/apk/debug/app-debug.apk
 ```
+
+### Installing on a phone over USB
+1. On the phone: Settings → About phone → tap *Build number* 7 times, then Settings → System → Developer options → turn on **USB debugging**.
+2. Plug in the phone and accept the "Allow USB debugging?" prompt.
+3. `.android-sdk/platform-tools/adb devices` should list it. If it says `no permissions`, run `sudo dnf install android-tools` (for its udev rules) and replug.
+4. `./gradlew :app:installDebug`
 On first run, Gradle downloads a JDK 21 toolchain if the system doesn't have one.
 The SDK and `local.properties` (which points Gradle at it) are machine-specific and never committed.
 
@@ -20,6 +27,7 @@ The SDK and `local.properties` (which points Gradle at it) are machine-specific 
 | Module | Contents |
 |---|---|
 | `core/` | Kotlin Multiplatform shared core. `protocol/jbd`: framing, frame reassembly, parsers, and a read-only client. `transport`: the `BleLink` interface that Android and BlueZ implement |
+| `app/` | Android app (Compose): favorites overview, search, detail, refresh. Read-only for now |
 | `hub/` | Linux hub (JVM). For now: a BlueZ `BleLink` over D-Bus, plus a spike CLI that polls batteries read-only |
 | `tools/` | Dev tools (for example, the Python read-only probe) |
 

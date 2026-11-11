@@ -12,8 +12,10 @@
 ## Phase 1: Read-only core
 - [x] Shared JBD read driver (framing, reassembly, parsers, client with retries), tested against captured frames
 - [x] Android target in `core` (project-local SDK, `tools/setup-android-sdk.sh`)
-- [ ] Android: favorites, nicknames, fleet overview, cached detail, search, refresh (direct mode)
-- [ ] Polling cycle and cache
+- [x] Android: favorites, nicknames, fleet overview, cached detail, search, refresh (direct mode). Builds; **not yet tested on a phone**
+- [x] Polling cycle and cache (while the app is visible, refreshing readings older than 10 min)
+- [ ] Test on the Pixel over USB
+- [ ] Settings screen (polling interval)
 
 ## Phase 2: Linux hub
 - [ ] Hub daemon: polling, history, LAN API, basic web UI

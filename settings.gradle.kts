@@ -22,3 +22,4 @@ plugins {
 
 include(":core")
 include(":hub")
+include(":app")

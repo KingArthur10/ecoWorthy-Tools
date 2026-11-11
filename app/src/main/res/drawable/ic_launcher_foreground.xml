@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Battery glyph with a charge bolt, centered in the 108dp adaptive icon safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:fillColor="#FFFFFF" android:pathData="M47,30h14v4h-14z" />
+    <path android:fillColor="#00000000" android:strokeColor="#FFFFFF" android:strokeWidth="4"
+        android:pathData="M40,36h28a2,2 0,0 1,2 2v34a2,2 0,0 1,-2 2h-28a2,2 0,0 1,-2 -2v-34a2,2 0,0 1,2 -2z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M56,42l-10,15h7l-3,11l10,-15h-7z" />
+</vector>

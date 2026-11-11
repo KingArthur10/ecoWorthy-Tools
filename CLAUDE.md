@@ -10,5 +10,6 @@
 - Record significant decisions as ADRs in `docs/decisions/`.
 - Android SDK: project-local in `.android-sdk/` (gitignored). Recreate it with `tools/setup-android-sdk.sh`. Android targets: compileSdk 37, minSdk 31.
 - Build and test: `./gradlew :core:jvmTest`. Protocol code goes in `core/src/commonMain` (it's shared by Android and the Linux hub).
+- Android app: `./gradlew :app:assembleDebug` (and `:app:lintDebug`, which should stay clean). The manifest deliberately has no INTERNET permission.
 - Protocol tests use the real frames in `core/src/commonTest/.../Captures.kt` (generated from `docs/hardware/captures/`).
 - `JbdFrame.readRequest` accepts only read commands. Write commands must be a separate, deliberate API (see `docs/safety.md`).
